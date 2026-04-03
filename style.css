@@ -52,12 +52,12 @@ body {
 #beam {
   position: absolute;
   bottom: 0;
-  left: -22px;
-  width: 44px;
-  height: 72vh;
-  background: linear-gradient(to top, rgba(255,220,80,0.18) 0%, rgba(255,220,80,0.06) 40%, transparent 100%);
+  left: -25vw;
+  width: 50vw;
+  height: calc(100dvh - 46px);
+  background: linear-gradient(to top, rgba(255,220,80,0.22) 0%, rgba(255,220,80,0.08) 40%, transparent 100%);
   transform-origin: bottom center;
-  border-radius: 22px 22px 0 0;
+  clip-path: polygon(50% 100%, 0% 0%, 100% 0%);
   opacity: 0;
   transition: opacity 0.3s;
 }
