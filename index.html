@@ -16,12 +16,15 @@
   <div id="stars"></div>
 </div>
 
+<!-- DARKNESS OVERLAY -->
 <div id="darkness"></div>
 
+<!-- BEAM -->
 <div id="beam-container">
   <div id="beam"></div>
 </div>
 
+<!-- HUD -->
 <div id="hud">
   <div>
     <div class="hud-label">Gambusinos</div>
@@ -33,23 +36,52 @@
   </div>
 </div>
 
+<!-- TIMER BAR -->
 <div id="timer-bar-wrap">
   <div id="timer-bar"></div>
 </div>
 
-<div id="gyro-hint">Inclina o telemóvel</div>
+<!-- GYRO HINT -->
+<div id="gyro-hint">Inclina o telemóvel para mover a luz</div>
 
-<button id="torch-btn"></button>
+<!-- TORCH BUTTON -->
+<button id="torch-btn" aria-label="Ligar lanterna">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color:#B8860B">
+    <path d="M9 2h6l2 6H7L9 2z"></path>
+    <path d="M7 8l1 8h8l1-8"></path>
+    <path d="M10 16v4m4-4v4"></path>
+    <path d="M8 20h8"></path>
+    <line x1="12" y1="2" x2="12" y2="0"></line>
+    <line x1="5" y1="4" x2="3.5" y2="2.5"></line>
+    <line x1="19" y1="4" x2="20.5" y2="2.5"></line>
+  </svg>
+</button>
 
+<!-- START SCREEN -->
 <div class="screen" id="start-screen">
-  <div class="screen-title">Caçador de Gambusinos</div>
-  <button class="btn-primary" id="start-btn">JOGAR</button>
+  <div id="stars2" style="position:absolute;inset:0;overflow:hidden;pointer-events:none"></div>
+  <div style="position:relative;z-index:1;width:100%">
+    <div class="screen-title" id="start-title">Caçador de Gambusinos</div>
+    <div class="screen-sub">A Mina Perdida</div>
+    <div class="divider"></div>
+    <p class="screen-desc">
+      A mina está às escuras.<br>
+      Liga a lanterna e inclina o telemóvel para varrer a escuridão.<br>
+      Quando a luz tocar um gambusino — toca nele!
+    </p>
+    <button class="btn-primary" id="start-btn">ENTRAR NA MINA</button>
+  </div>
 </div>
 
+<!-- END SCREEN -->
 <div class="screen hidden" id="end-screen">
-  <div class="screen-title" id="end-title"></div>
-  <p id="end-desc"></p>
-  <button class="btn-primary" id="restart-btn">REINICIAR</button>
+  <div style="position:relative;z-index:1;width:100%">
+    <div class="screen-title" id="end-title">Fim da Jornada</div>
+    <div class="screen-sub" id="end-sub">O tempo esgotou-se</div>
+    <div class="divider"></div>
+    <p class="screen-desc" id="end-desc"></p>
+    <button class="btn-primary" id="restart-btn">VOLTAR À MINA</button>
+  </div>
 </div>
 
 <script src="script.js"></script>
