@@ -1,1 +1,57 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Caçador de Gambusinos</title>
 
+<link rel="stylesheet" href="style.css">
+<meta name="theme-color" content="#000000">
+<link rel="icon" href="assets/icon.png">
+</head>
+
+<body>
+
+<div id="cave">
+  <div id="stars"></div>
+</div>
+
+<div id="darkness"></div>
+
+<div id="beam-container">
+  <div id="beam"></div>
+</div>
+
+<div id="hud">
+  <div>
+    <div class="hud-label">Gambusinos</div>
+    <div class="hud-value" id="score">0</div>
+  </div>
+  <div style="text-align:right">
+    <div class="hud-label">Nível</div>
+    <div class="hud-value" id="level-display">1</div>
+  </div>
+</div>
+
+<div id="timer-bar-wrap">
+  <div id="timer-bar"></div>
+</div>
+
+<div id="gyro-hint">Inclina o telemóvel</div>
+
+<button id="torch-btn"></button>
+
+<div class="screen" id="start-screen">
+  <div class="screen-title">Caçador de Gambusinos</div>
+  <button class="btn-primary" id="start-btn">JOGAR</button>
+</div>
+
+<div class="screen hidden" id="end-screen">
+  <div class="screen-title" id="end-title"></div>
+  <p id="end-desc"></p>
+  <button class="btn-primary" id="restart-btn">REINICIAR</button>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
