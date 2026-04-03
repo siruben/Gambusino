@@ -14,6 +14,8 @@ const endTitle    = document.getElementById('end-title');
 const endSub      = document.getElementById('end-sub');
 const endDesc     = document.getElementById('end-desc');
 
+const bgMusic     = document.getElementById('bg-music');
+
 // --- Game state ---
 let torchOn    = false;
 let gameActive = false;
@@ -82,6 +84,9 @@ function startGame() {
   startTimer();
   requestGyro();
 
+  bgMusic.currentTime = 0;
+  bgMusic.play().catch(() => {});
+
   if (!rafId) rafLoop();
 }
 
@@ -94,6 +99,9 @@ function endGame() {
   clearNuggets();
   clearInterval(timerHandle);
   setDarkness(-9999, -9999);
+
+  bgMusic.pause();
+  bgMusic.currentTime = 0;
 
   const msg = score > EXCELLENT_SCORE ? 'Excelente trabalho!'
             : score > GOOD_SCORE      ? 'Bom esforço!'
