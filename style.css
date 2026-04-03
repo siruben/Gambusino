@@ -270,7 +270,9 @@ body {
   transform: scale(0.97);
 }
 
-@keyframes twinkle {
+#start-title {
+  word-spacing: 1.4em;
+}
   from { opacity: 0.08; }
   to   { opacity: 0.75; }
 }

@@ -23,9 +23,16 @@ let timerHandle = null;
 let timeLeft   = 0;
 let gyroEnabled = false;
 
-const LEVEL_DURATION  = 30000; // ms
-const BEAM_RADIUS     = 110;   // px — spotlight radius
-const NUGGETS_PER_LEVEL = [8, 10, 12, 15, 18];
+const LEVEL_DURATION        = 30000; // ms
+const BEAM_RADIUS           = 110;   // px — spotlight radius
+const BEAM_DETECTION_FACTOR = 0.78;  // fraction of BEAM_RADIUS used for nugget hit detection
+const NUGGETS_PER_LEVEL     = [8, 10, 12, 15, 18];
+const EXCELLENT_SCORE       = 10;    // score threshold for "excellent" end message
+const GOOD_SCORE            = 4;     // score threshold for "good" end message
+// Gyro beta angle range: phone held upright ~90°, tilting forward decreases beta
+const BETA_MIN          = 10;   // degrees — maps to bottom of screen
+const BETA_RANGE        = 70;   // degrees — total mapped range (BETA_MIN to BETA_MIN+BETA_RANGE)
+const Y_COVERAGE_FACTOR = 0.85; // fraction of screen height used for vertical beam travel
 
 // --- Beam position state ---
 let beamX       = window.innerWidth  / 2;
@@ -88,8 +95,8 @@ function endGame() {
   clearInterval(timerHandle);
   setDarkness(-9999, -9999);
 
-  const msg = score > 10 ? 'Excelente trabalho!'
-            : score > 4  ? 'Bom esforço!'
+  const msg = score > EXCELLENT_SCORE ? 'Excelente trabalho!'
+            : score > GOOD_SCORE      ? 'Bom esforço!'
             : 'A mina guarda os seus segredos…';
 
   endTitle.textContent = 'Fim da Jornada';
@@ -195,10 +202,10 @@ function onGyro(e) {
   // gamma: -90..90  → left/right tilt → X position
   const gamma = Math.max(-45, Math.min(45, e.gamma));
   // beta: 0..90 when phone upright → forward/back tilt → Y position
-  const beta  = Math.max(10, Math.min(80, e.beta));
+  const beta  = Math.max(BETA_MIN, Math.min(BETA_MIN + BETA_RANGE, e.beta));
 
   targetBeamX = ((gamma + 45) / 90)  * window.innerWidth;
-  targetBeamY = (1 - (beta - 10) / 70) * (window.innerHeight * 0.85);
+  targetBeamY = (1 - (beta - BETA_MIN) / BETA_RANGE) * (window.innerHeight * Y_COVERAGE_FACTOR);
 }
 
 // --- Touch / Mouse fallback (used when no gyro or on desktop) ---
@@ -255,7 +262,7 @@ function checkLight() {
     const ny = n.offsetTop  + 15;
     const dx = nx - beamX;
     const dy = ny - beamY;
-    const lit = (dx * dx + dy * dy) < (BEAM_RADIUS * 0.78) * (BEAM_RADIUS * 0.78);
+    const lit = (dx * dx + dy * dy) < (BEAM_RADIUS * BEAM_DETECTION_FACTOR) * (BEAM_RADIUS * BEAM_DETECTION_FACTOR);
     n.classList.toggle('lit', lit);
   });
 }
