@@ -1,5 +1,7 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+.hidden { display: none !important; }
+
 body {
   background: #0a0a0a;
   color: #fff;
@@ -146,13 +148,7 @@ body {
 
 /* Timer bar */
 #timer-bar-wrap {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 4px;
-  background: rgba(255,255,255,0.08);
-  z-index: 101;
+  display: none;
 }
 
 #timer-bar {
@@ -165,22 +161,22 @@ body {
 /* Gyro hint */
 #gyro-hint {
   position: fixed;
-  bottom: 110px;
+  top: 35%;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 13px;
-  color: rgba(255,215,0,0.55);
+  font-size: 24px;
+  font-weight: bold;
+  color: rgba(255,215,0,0.95);
+  text-shadow: 0 0 16px rgba(255,215,0,0.6);
   z-index: 100;
   white-space: nowrap;
   pointer-events: none;
-  animation: fadeHint 4s ease forwards;
+  animation: blinkHint 1s ease-in-out infinite;
 }
 
-@keyframes fadeHint {
-  0%   { opacity: 0; }
-  15%  { opacity: 1; }
-  75%  { opacity: 1; }
-  100% { opacity: 0; }
+@keyframes blinkHint {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
 }
 
 /* Torch button */
