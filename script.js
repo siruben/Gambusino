@@ -25,6 +25,9 @@ let level      = 1;
 let timerHandle = null;
 let timeLeft   = 0;
 
+// --- Particles state (hit effects) ---
+let particles = [];
+
 const LEVEL_DURATION        = 30000; // ms
 const BEAM_SWEEP_PERIOD     = 3500;  // ms — duration of one full left-right-left sweep cycle (fallback)
 const MAX_SWEEP_ANGLE       = 65;    // degrees — max auto-sweep angle (fallback, no gyro)
@@ -48,6 +51,14 @@ const NUGGET_SPEED_STEP     = 0.07;  // extra downward speed per level
 const NUGGET_ZIG_SPEED      = 1.5;   // horizontal zig-zag speed at level 1 (px/frame)
 const NUGGET_ZIG_STEP       = 0.04;  // extra horizontal speed per level
 const NUGGET_SPAWN_STAGGER  = 120;   // vertical offset between consecutively spawned gambusinos (px)
+
+// [CREEPY] Jelly bounce constants
+const BOUNCE_PERIOD_MS   = 190;   // ms per bounce oscillation cycle
+const BOUNCE_Y_AMPLITUDE = 0.07;  // vertical stretch factor (squash-stretch)
+const BOUNCE_X_AMPLITUDE = 0.04;  // horizontal squash factor
+
+// [CREEPY] Particle constants
+const PARTICLE_GRAVITY   = 0.18;  // downward acceleration per frame for hit particles
 
 // --- Beam angle state ---
 let currentAngle   = 0;    // smoothly interpolated beam rotation angle (degrees)
@@ -132,6 +143,7 @@ function endGame() {
   sweepStartTime = null;
   clearNuggets();
   clearBullets();
+  clearParticles(); // [CREEPY] clean up any flying goo
   clearInterval(timerHandle);
   setDarkness();
 
@@ -143,6 +155,7 @@ function endGame() {
             : 'A mina guarda os seus segredos…';
 
   endTitle.textContent = 'Fim da Jornada';
+  endTitle.classList.remove('creepy-shake', 'creepy-glow');
   endSub.textContent   = 'O tempo esgotou-se';
   endDesc.textContent  = `Apanhaste ${score} gambusino${score !== 1 ? 's' : ''} até ao nível ${level}. ${msg}`;
 
@@ -201,7 +214,8 @@ function spawnNuggets(count) {
     el.style.top  = y + 'px';
     cave.appendChild(el);
 
-    const nd = { el, x, y, vx: zigSpeed * dir, vy: speed };
+    // [CREEPY] bouncePhase gives each gambusino its own jelly rhythm
+    const nd = { el, x, y, vx: zigSpeed * dir, vy: speed, bouncePhase: Math.random() * Math.PI * 2 };
     nuggets.push(nd);
 
     el.addEventListener('click', () => {
@@ -217,20 +231,76 @@ function clearNuggets() {
 }
 
 function catchNugget(nd) {
+  // [CREEPY] Burst of goo particles at the gambusino's centre before it pops
+  createParticles(nd.x + NUGGET_HALF, nd.y + NUGGET_HALF);
+
   nd.el.style.opacity = '';
   nd.el.style.transform = '';
   nd.el.style.filter = '';
   nd.el.classList.add('caught');
   score++;
   scoreEl.textContent = score;
-  setTimeout(() => nd.el.remove(), 300);
+  setTimeout(() => nd.el.remove(), 350);
   nuggets = nuggets.filter(x => x !== nd);
   if (nuggets.length === 0) nextLevel();
+}
+
+// [CREEPY] Spawn a burst of coloured goo/spark particles at (cx, cy)
+function createParticles(cx, cy) {
+  const count  = 10;
+  const colors = ['#39ff14', '#bf5fff', '#ffff55', '#ffffff', '#00ffcc'];
+  for (let i = 0; i < count; i++) {
+    const angle      = (i / count) * Math.PI * 2 + Math.random() * 0.6;
+    const radialSpeed = 2.5 + Math.random() * 3.5;
+    const size  = 4 + Math.random() * 7;
+    const color = colors[Math.floor(Math.random() * colors.length)];
+    const el    = document.createElement('div');
+    el.className = 'particle';
+    el.style.cssText =
+      `left:${cx}px;top:${cy}px;width:${size}px;height:${size}px;` +
+      `background:${color};box-shadow:0 0 ${size}px 2px ${color};`;
+    document.body.appendChild(el);
+    particles.push({
+      el,
+      x: cx, y: cy,
+      vx: Math.cos(angle) * radialSpeed,
+      vy: Math.sin(angle) * radialSpeed,
+      life: 1.0,
+      decay: 0.028 + Math.random() * 0.018
+    });
+  }
+}
+
+// [CREEPY] Update particle positions and fade — called each rAF frame
+function updateParticles() {
+  if (!particles.length) return;
+  const surviving = [];
+  for (const p of particles) {
+    p.life -= p.decay;
+    if (p.life <= 0) { p.el.remove(); continue; }
+    p.x  += p.vx;
+    p.y  += p.vy;
+    p.vy += PARTICLE_GRAVITY; // apply gravity to particles
+    p.el.style.left      = p.x + 'px';
+    p.el.style.top       = p.y + 'px';
+    p.el.style.opacity   = p.life.toFixed(2);
+    p.el.style.transform = `translate(-50%,-50%) scale(${p.life.toFixed(2)})`;
+    surviving.push(p);
+  }
+  particles = surviving;
+}
+
+// [CREEPY] Clear any in-flight particles (call on game end / restart)
+function clearParticles() {
+  particles.forEach(p => p.el.remove());
+  particles = [];
 }
 
 function clearBullets() {
   bullets.forEach(b => b.el.remove());
   bullets = [];
+  // [CREEPY] Remove any lingering trail elements
+  document.querySelectorAll('.bullet-trail').forEach(el => el.remove());
 }
 
 function updateNuggets() {
@@ -284,6 +354,18 @@ function updateBullets() {
     }
     b.el.style.left = b.x + 'px';
     b.el.style.top  = b.y + 'px';
+
+    // [CREEPY] Emit a fading trail element every 2 frames
+    b.trailFrame = (b.trailFrame || 0) + 1;
+    if (b.trailFrame % 2 === 0) {
+      const trail = document.createElement('div');
+      trail.className = 'bullet-trail';
+      const ts = 5 + Math.random() * 4;
+      trail.style.cssText = `left:${b.x}px;top:${b.y}px;width:${ts}px;height:${ts}px;`;
+      document.body.appendChild(trail);
+      setTimeout(() => trail.remove(), 180);
+    }
+
     let hit = false;
     for (let i = 0; i < nuggets.length; i++) {
       const nd = nuggets[i];
@@ -333,15 +415,18 @@ function showVictory() {
   sweepStartTime = null;
   clearNuggets();
   clearBullets();
+  clearParticles(); // [CREEPY] clean up particles
   clearInterval(timerHandle);
   setDarkness();
 
   bgMusic.pause();
   bgMusic.currentTime = 0;
 
-  endTitle.textContent = '🏆 Vitória!';
-  endSub.textContent   = 'Completaste todos os 30 níveis!';
-  endDesc.textContent  = `Apanhaste ${score} gambusino${score !== 1 ? 's' : ''} ao longo da jornada. Parabéns, caçador lendário!`;
+  // [CREEPY] Unsettling victory message with shake + eerie green glow
+  endTitle.textContent = 'Apanhaste todos os gambusinos… 👁️';
+  endTitle.classList.add('creepy-shake', 'creepy-glow');
+  endSub.textContent   = 'ou será que não?';
+  endDesc.textContent  = `${score} gambusino${score !== 1 ? 's' : ''} capturado${score !== 1 ? 's' : ''}… por enquanto. A mina nunca esquece.`;
 
   endScreen.classList.remove('hidden');
 }
@@ -366,6 +451,7 @@ function rafLoop() {
   }
 
   updateBullets();
+  updateParticles(); // [CREEPY] update hit particles — runs even when torch is off
 
   if (!torchOn) return;
 
@@ -380,7 +466,9 @@ function setDarkness() {
 }
 
 function updateBeamVisual() {
-  beam.style.transform = `rotate(${currentAngle}deg)`;
+  // [CREEPY] Subtle random tremor adds tension to the torch beam
+  const tremor = (Math.random() - 0.5) * 0.5;
+  beam.style.transform = `rotate(${currentAngle + tremor}deg)`;
 }
 
 function checkLight() {
@@ -390,17 +478,26 @@ function checkLight() {
   const beamH     = window.innerHeight - BEAM_APEX_Y_OFFSET;
   const halfAngle = Math.atan2(halfW, beamH) * (180 / Math.PI);
 
+  // [CREEPY] Current time used for per-nugget jelly bounce
+  const now = performance.now();
+
   nuggets.forEach(nd => {
     const nx = nd.x + NUGGET_HALF;
     const ny = nd.y + NUGGET_HALF;
     const dx = nx - apexX;
     const dy = ny - apexY;
 
+    // [CREEPY] Jelly squash-stretch: Y stretches while X squashes
+    const bounceT = now / BOUNCE_PERIOD_MS + nd.bouncePhase;
+    const bounceY = 1 + BOUNCE_Y_AMPLITUDE * Math.sin(bounceT);
+    const bounceX = 1 - BOUNCE_X_AMPLITUDE * Math.sin(bounceT);
+
     // Nugget must be above the apex (beam only points upward)
     if (dy >= 0) {
       nd.el.style.opacity       = '0';
       nd.el.style.pointerEvents = 'none';
-      nd.el.style.transform     = 'scale(0.7)';
+      // [CREEPY] Keep animating bounce even in darkness for smooth beam entry
+      nd.el.style.transform     = `scale(${(0.7 * bounceX).toFixed(3)}, ${(0.7 * bounceY).toFixed(3)})`;
       nd.el.style.filter        = '';
       return;
     }
@@ -409,17 +506,20 @@ function checkLight() {
     const nuggetAngle = Math.atan2(dx, -dy) * (180 / Math.PI);
     const angleDiff   = Math.abs(nuggetAngle - currentAngle);
     const intensity   = Math.max(0, Math.min(1, 1 - angleDiff / halfAngle));
+    const baseScale   = 0.7 + 0.3 * intensity;
 
     nd.el.style.opacity       = intensity;
     nd.el.style.pointerEvents = intensity > 0 ? 'auto' : 'none';
-    nd.el.style.transform     = `scale(${(0.7 + 0.3 * intensity).toFixed(2)})`;
+    // [CREEPY] Bounce baked into the beam-driven scale
+    nd.el.style.transform     = `scale(${(baseScale * bounceX).toFixed(3)}, ${(baseScale * bounceY).toFixed(3)})`;
 
     if (intensity > 0) {
-      const brightness = (1 + 1.2 * intensity).toFixed(2);
-      const glow1      = Math.round(22 * intensity);
-      const glow2      = Math.round(8  * intensity);
+      const brightness = (1 + 1.5 * intensity).toFixed(2);
+      const glow1      = Math.round(28 * intensity);
+      const glow2      = Math.round(10 * intensity);
       const alpha      = intensity.toFixed(2);
-      nd.el.style.filter = `brightness(${brightness}) drop-shadow(0 0 ${glow1}px rgba(255,215,0,${alpha})) drop-shadow(0 0 ${glow2}px rgba(255,255,255,${alpha}))`;
+      // [CREEPY] Hint of eerie green in the glow when lit
+      nd.el.style.filter = `brightness(${brightness}) drop-shadow(0 0 ${glow1}px rgba(255,215,0,${alpha})) drop-shadow(0 0 ${glow2}px rgba(160,255,100,${alpha}))`;
     } else {
       nd.el.style.filter = '';
     }
@@ -476,6 +576,32 @@ function initStars(containerId, count) {
 
 initStars('stars',  60);
 initStars('stars2', 80);
+
+// [CREEPY] Atmospheric fog wisps drifting across the cave
+function initFog() {
+  const cave = document.getElementById('cave');
+  // Remove any fog from a previous game start
+  cave.querySelectorAll('.fog').forEach(el => el.remove());
+
+  const configs = [
+    { color: 'rgba(0,80,20,0.07)',   size: 320, topPct: 30, duration: 28, delay: 0    },
+    { color: 'rgba(55,0,80,0.055)',  size: 260, topPct: 55, duration: 22, delay: -10  },
+    { color: 'rgba(10,20,60,0.05)', size: 400, topPct: 20, duration: 34, delay: -18  }
+  ];
+  configs.forEach(cfg => {
+    const fog = document.createElement('div');
+    fog.className = 'fog';
+    fog.style.cssText =
+      `width:${cfg.size}px;height:${cfg.size * 0.38}px;` +
+      `left:-${cfg.size}px;top:${cfg.topPct}%;` +
+      `background:${cfg.color};` +
+      `filter:blur(${38 + Math.random() * 16}px);` +
+      `animation:fogDrift ${cfg.duration}s ${cfg.delay}s linear infinite;`;
+    cave.appendChild(fog);
+  });
+}
+
+initFog();
 
 // Initialise darkness to full black before game starts
 setDarkness();
