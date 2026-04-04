@@ -88,8 +88,8 @@ body {
 /* Gambusino nuggets */
 .nugget {
   position: absolute;
-  width: 135px;
-  height: 135px;
+  width: 101px;
+  height: 101px;
   background-image: url('Gambusino.png');
   background-size: contain;
   background-repeat: no-repeat;
@@ -499,13 +499,14 @@ body {
 }
 
 
-/* Escape fill bar (fugitive indicator next to torch button) */
+/* Escape fill bar (fugitive indicator above torch button) */
 #escape-bar-wrap {
   position: fixed;
-  bottom: 22px;
-  left: calc(50% + 36px);
-  width: 12px;
-  height: 56px;
+  bottom: 84px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 56px;
+  height: 8px;
   background: rgba(0,0,0,0.55);
   border: 1px solid rgba(57,255,20,0.35);
   border-radius: 6px;
@@ -515,13 +516,14 @@ body {
 
 #escape-bar {
   position: absolute;
-  bottom: 0;
   left: 0;
-  right: 0;
-  height: 0%;
+  top: 0;
+  bottom: 0;
+  width: 0%;
+  height: 100%;
   background: #39ff14;
   border-radius: 6px;
-  transition: height 0.35s ease, background-color 0.5s;
+  transition: width 0.35s ease, background-color 0.5s;
 }
 
 /* Combo display */

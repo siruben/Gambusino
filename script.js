@@ -16,12 +16,21 @@ const endSub      = document.getElementById('end-sub');
 const endDesc     = document.getElementById('end-desc');
 
 const bgMusic        = document.getElementById('bg-music');
+const introMusic     = document.getElementById('intro-music');
 // New HUD refs
 const progressEl     = document.getElementById('progress-display');
 const missedEl       = document.getElementById('escape-bar');
 const comboDisplayEl = document.getElementById('combo-display');
 const comboValueEl   = document.getElementById('combo-value');
 const powerupIndEl   = document.getElementById('powerup-indicator');
+
+// --- Creator screen ---
+document.getElementById('creator-continue-btn').addEventListener('click', () => {
+  document.getElementById('creator-screen').classList.add('hidden');
+  document.getElementById('start-screen').classList.remove('hidden');
+  introMusic.currentTime = 0;
+  introMusic.play().catch(() => {});
+});
 
 // --- Game state ---
 let torchOn    = false;
@@ -60,8 +69,8 @@ const MAX_SWEEP_ANGLE       = 65;    // degrees — max auto-sweep angle (no gyr
 const MAX_GYRO_ANGLE        = 75;    // degrees — gyroscope gamma clamp
 const LERP_FACTOR           = 0.12;  // beam angle smoothing
 const BEAM_HALF_VW          = 0.25;  // half-width of beam (matches CSS left:-25vw)
-const NUGGET_SIZE            = 135;  // normal gambusino size (px)
-const RARE_SIZE              = 160;  // rare gambusino size (px)
+const NUGGET_SIZE            = 101;  // normal gambusino size (px)
+const RARE_SIZE              = 120;  // rare gambusino size (px)
 const NUGGET_HALF            = Math.floor(NUGGET_SIZE / 2);
 const NUGGET_MIN_DIST        = 150;  // min spawn distance between nuggets
 const NUGGET_MAX_ATTEMPTS    = 100;  // max placement retries
@@ -166,11 +175,11 @@ function startGame() {
   activePowerUp     = null;
   lastShotTime      = 0;
   gameActive = true;
-  torchOn    = true;
+  torchOn    = false;
 
   scoreEl.textContent = '0';
   levelEl.textContent = '1';
-  missedEl.style.height = '0%';
+  missedEl.style.width = '0%';
   missedEl.style.backgroundColor = '#39ff14';
   missedEl.setAttribute('aria-valuenow', '0');
 
@@ -180,8 +189,8 @@ function startGame() {
   powerupIndEl.classList.add('hidden');
   document.querySelectorAll('.powerup-pickup').forEach(el => el.remove());
 
-  torchBtn.classList.add('on');
-  beam.classList.add('active');
+  torchBtn.classList.remove('on');
+  beam.classList.remove('active');
 
   // Reset hint animation
   gyroHint.style.animation = 'none';
@@ -211,8 +220,8 @@ function startGame() {
   startLevelSpawning(config);
   startPowerUpSpawning();
 
-  bgMusic.currentTime = 0;
-  bgMusic.play().catch(() => {});
+  introMusic.pause();
+  introMusic.currentTime = 0;
 
   if (!rafId) rafLoop();
 }
@@ -518,7 +527,7 @@ function updateProgress() {
 
 function updateMissedDisplay() {
   const pct = MAX_MISSED > 0 ? (missed / MAX_MISSED) * 100 : 0;
-  missedEl.style.height = pct + '%';
+  missedEl.style.width = pct + '%';
   missedEl.setAttribute('aria-valuenow', Math.round(pct));
   if (pct >= 70) {
     missedEl.style.backgroundColor = '#ff4444';
@@ -1007,6 +1016,7 @@ function initStars(containerId, count) {
 
 initStars('stars',  60);
 initStars('stars2', 80);
+initStars('stars3', 60);
 
 // [CREEPY] Atmospheric fog wisps drifting across the cave
 function initFog() {

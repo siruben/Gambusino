@@ -50,7 +50,7 @@
 </div>
 
 <!-- GYRO HINT -->
-<div id="gyro-hint">Os gambusinos descem em zig-zag — dispara para os apanhar!</div>
+<div id="gyro-hint">Liga a puta da lanterna!</div>
 
 <!-- LEVEL MESSAGE -->
 <div id="level-msg" class="hidden"></div>
@@ -91,8 +91,18 @@
   </svg>
 </button>
 
+<!-- CREATOR SCREEN -->
+<div class="screen" id="creator-screen">
+  <div id="stars3" style="position:absolute;inset:0;overflow:hidden;pointer-events:none"></div>
+  <div style="position:relative;z-index:1;width:100%">
+    <div class="screen-title">Ruben Alves</div>
+    <div class="divider"></div>
+    <button class="btn-primary" id="creator-continue-btn">CONTINUAR</button>
+  </div>
+</div>
+
 <!-- START SCREEN -->
-<div class="screen" id="start-screen">
+<div class="screen hidden" id="start-screen">
   <div id="stars2" style="position:absolute;inset:0;overflow:hidden;pointer-events:none"></div>
   <div style="position:relative;z-index:1;width:100%">
     <div class="screen-title" id="start-title">Caçador de Gambusinos</div>
@@ -120,6 +130,7 @@
 </div>
 
 <audio id="bg-music" src="Gambusinos.mp3" loop></audio>
+<audio id="intro-music" src="Gamb-orig.mp3" loop></audio>
 <script src="script.js"></script>
 </body>
 </html>
