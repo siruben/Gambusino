@@ -42,6 +42,12 @@ const GOOD_SCORE            = 4;     // score threshold for "good" end message
 const BULLET_SPEED          = 12;    // bullet travel speed in pixels per frame
 const NUGGET_HALF           = Math.floor(NUGGET_SIZE / 2); // nugget center offset / collision radius (67px)
 const BEAM_APEX_Y_OFFSET    = 46;    // px from bottom of viewport to beam apex / torch button centre
+const MAX_LEVELS            = 30;    // total number of levels
+const NUGGET_BASE_SPEED     = 0.6;   // downward speed at level 1 (px/frame)
+const NUGGET_SPEED_STEP     = 0.07;  // extra downward speed per level
+const NUGGET_ZIG_SPEED      = 1.5;   // horizontal zig-zag speed at level 1 (px/frame)
+const NUGGET_ZIG_STEP       = 0.04;  // extra horizontal speed per level
+const NUGGET_SPAWN_STAGGER  = 120;   // vertical offset between consecutively spawned gambusinos (px)
 
 // --- Beam angle state ---
 let currentAngle   = 0;    // smoothly interpolated beam rotation angle (degrees)
@@ -179,66 +185,76 @@ function spawnNuggets(count) {
   clearNuggets();
   const cave   = document.getElementById('nuggets-container');
   const margin = 60;
-  const W = window.innerWidth;
-  const H = window.innerHeight;
-  const maxX = W - 2 * margin - NUGGET_SIZE;
-  const maxY = H * NUGGET_SPAWN_AREA - margin - NUGGET_SIZE;
-  const placed = []; // top-left corner coordinates of placed nuggets
+  const W      = window.innerWidth;
+  const speed    = NUGGET_BASE_SPEED + (level - 1) * NUGGET_SPEED_STEP;
+  const zigSpeed = NUGGET_ZIG_SPEED  + (level - 1) * NUGGET_ZIG_STEP;
 
   for (let i = 0; i < count; i++) {
-    let x, y, retryCount = 0;
-    // Retry until a position is far enough from all placed nuggets
-    do {
-      x = margin + Math.random() * maxX;
-      y = margin + Math.random() * maxY;
-      retryCount++;
-    } while (
-      retryCount < NUGGET_MAX_ATTEMPTS &&
-      isTooClose(x, y, placed)
-    );
+    // Stagger spawn positions vertically so gambusinos enter screen over time
+    const x   = margin + Math.random() * (W - 2 * margin - NUGGET_SIZE);
+    const y   = -NUGGET_SIZE - i * NUGGET_SPAWN_STAGGER;
+    const dir = Math.random() > 0.5 ? 1 : -1;
 
-    // If retries were exhausted and still overlapping, skip this nugget
-    if (retryCount >= NUGGET_MAX_ATTEMPTS && isTooClose(x, y, placed)) {
-      continue;
-    }
-    placed.push({ x, y });
+    const el = document.createElement('div');
+    el.className = 'nugget';
+    el.style.left = x + 'px';
+    el.style.top  = y + 'px';
+    cave.appendChild(el);
 
-    const n = document.createElement('div');
-    n.className = 'nugget';
-    n.style.left = x + 'px';
-    // Spawn in upper two thirds of screen (below that is close to the torch apex and unreachable)
-    n.style.top  = y + 'px';
+    const nd = { el, x, y, vx: zigSpeed * dir, vy: speed };
+    nuggets.push(nd);
 
-    n.addEventListener('click', () => {
-      if ((parseFloat(n.style.opacity) || 0) <= 0) return;
-      catchNugget(n);
+    el.addEventListener('click', () => {
+      if ((parseFloat(el.style.opacity) || 0) <= 0) return;
+      catchNugget(nd);
     });
-
-    cave.appendChild(n);
-    nuggets.push(n);
   }
 }
 
 function clearNuggets() {
-  nuggets.forEach(n => n.remove());
+  nuggets.forEach(nd => nd.el.remove());
   nuggets = [];
 }
 
-function catchNugget(n) {
-  n.style.opacity = '';
-  n.style.transform = '';
-  n.style.filter = '';
-  n.classList.add('caught');
+function catchNugget(nd) {
+  nd.el.style.opacity = '';
+  nd.el.style.transform = '';
+  nd.el.style.filter = '';
+  nd.el.classList.add('caught');
   score++;
   scoreEl.textContent = score;
-  setTimeout(() => n.remove(), 300);
-  nuggets = nuggets.filter(x => x !== n);
+  setTimeout(() => nd.el.remove(), 300);
+  nuggets = nuggets.filter(x => x !== nd);
   if (nuggets.length === 0) nextLevel();
 }
 
 function clearBullets() {
   bullets.forEach(b => b.el.remove());
   bullets = [];
+}
+
+function updateNuggets() {
+  if (!nuggets.length) return;
+  const W = window.innerWidth;
+  const H = window.innerHeight;
+  const surviving = [];
+  for (const nd of nuggets) {
+    nd.x += nd.vx;
+    nd.y += nd.vy;
+    // Bounce off side walls for zig-zag
+    if (nd.x < 0) { nd.x = 0; nd.vx = Math.abs(nd.vx); }
+    else if (nd.x > W - NUGGET_SIZE) { nd.x = W - NUGGET_SIZE; nd.vx = -Math.abs(nd.vx); }
+    nd.el.style.left = nd.x + 'px';
+    nd.el.style.top  = nd.y + 'px';
+    if (nd.y > H) {
+      // Gambusino reached the bottom — disappears without scoring
+      nd.el.remove();
+    } else {
+      surviving.push(nd);
+    }
+  }
+  nuggets = surviving;
+  if (gameActive && nuggets.length === 0) nextLevel();
 }
 
 function fireBullet() {
@@ -270,9 +286,9 @@ function updateBullets() {
     b.el.style.top  = b.y + 'px';
     let hit = false;
     for (let i = 0; i < nuggets.length; i++) {
-      const n = nuggets[i];
-      if (Math.hypot(b.x - (n.offsetLeft + NUGGET_HALF), b.y - (n.offsetTop + NUGGET_HALF)) < NUGGET_HALF) {
-        catchNugget(n);
+      const nd = nuggets[i];
+      if (Math.hypot(b.x - (nd.x + NUGGET_HALF), b.y - (nd.y + NUGGET_HALF)) < NUGGET_HALF) {
+        catchNugget(nd);
         hit = true;
         break;
       }
@@ -287,6 +303,10 @@ function updateBullets() {
 }
 
 function nextLevel() {
+  if (level >= MAX_LEVELS) {
+    showVictory();
+    return;
+  }
   level++;
   levelEl.textContent = level;
   timeLeft = LEVEL_DURATION;
@@ -302,6 +322,28 @@ function nextLevel() {
   setTimeout(() => levelMsg.classList.add('hidden'), 2000);
 
   spawnNuggets(count);
+}
+
+function showVictory() {
+  gameActive = false;
+  torchOn    = false;
+  torchBtn.classList.remove('on');
+  beam.classList.remove('active');
+
+  sweepStartTime = null;
+  clearNuggets();
+  clearBullets();
+  clearInterval(timerHandle);
+  setDarkness();
+
+  bgMusic.pause();
+  bgMusic.currentTime = 0;
+
+  endTitle.textContent = '🏆 Vitória!';
+  endSub.textContent   = 'Completaste todos os 30 níveis!';
+  endDesc.textContent  = `Apanhaste ${score} gambusino${score !== 1 ? 's' : ''} ao longo da jornada. Parabéns, caçador lendário!`;
+
+  endScreen.classList.remove('hidden');
 }
 
 // --- rAF animation loop ---
@@ -327,6 +369,7 @@ function rafLoop() {
 
   if (!torchOn) return;
 
+  updateNuggets();
   updateBeamVisual();
   checkLight();
 }
@@ -347,18 +390,18 @@ function checkLight() {
   const beamH     = window.innerHeight - BEAM_APEX_Y_OFFSET;
   const halfAngle = Math.atan2(halfW, beamH) * (180 / Math.PI);
 
-  nuggets.forEach(n => {
-    const nx = n.offsetLeft + NUGGET_HALF;
-    const ny = n.offsetTop  + NUGGET_HALF;
+  nuggets.forEach(nd => {
+    const nx = nd.x + NUGGET_HALF;
+    const ny = nd.y + NUGGET_HALF;
     const dx = nx - apexX;
     const dy = ny - apexY;
 
     // Nugget must be above the apex (beam only points upward)
     if (dy >= 0) {
-      n.style.opacity       = '0';
-      n.style.pointerEvents = 'none';
-      n.style.transform     = 'scale(0.7)';
-      n.style.filter        = '';
+      nd.el.style.opacity       = '0';
+      nd.el.style.pointerEvents = 'none';
+      nd.el.style.transform     = 'scale(0.7)';
+      nd.el.style.filter        = '';
       return;
     }
 
@@ -367,18 +410,18 @@ function checkLight() {
     const angleDiff   = Math.abs(nuggetAngle - currentAngle);
     const intensity   = Math.max(0, Math.min(1, 1 - angleDiff / halfAngle));
 
-    n.style.opacity       = intensity;
-    n.style.pointerEvents = intensity > 0 ? 'auto' : 'none';
-    n.style.transform     = `scale(${(0.7 + 0.3 * intensity).toFixed(2)})`;
+    nd.el.style.opacity       = intensity;
+    nd.el.style.pointerEvents = intensity > 0 ? 'auto' : 'none';
+    nd.el.style.transform     = `scale(${(0.7 + 0.3 * intensity).toFixed(2)})`;
 
     if (intensity > 0) {
       const brightness = (1 + 1.2 * intensity).toFixed(2);
       const glow1      = Math.round(22 * intensity);
       const glow2      = Math.round(8  * intensity);
       const alpha      = intensity.toFixed(2);
-      n.style.filter   = `brightness(${brightness}) drop-shadow(0 0 ${glow1}px rgba(255,215,0,${alpha})) drop-shadow(0 0 ${glow2}px rgba(255,255,255,${alpha}))`;
+      nd.el.style.filter = `brightness(${brightness}) drop-shadow(0 0 ${glow1}px rgba(255,215,0,${alpha})) drop-shadow(0 0 ${glow2}px rgba(255,255,255,${alpha}))`;
     } else {
-      n.style.filter = '';
+      nd.el.style.filter = '';
     }
   });
 }
