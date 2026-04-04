@@ -687,6 +687,7 @@ function updateNuggets() {
   const slowFactor = (activePowerUp && activePowerUp.type === 'slowmo'
                       && performance.now() < activePowerUp.endTime) ? 0.4 : 1;
   const surviving = [];
+  let anyEscaped = false;
   for (const nd of nuggets) {
     nd.x += nd.vx * slowFactor;
     nd.y += nd.vy * slowFactor;
@@ -698,6 +699,7 @@ function updateNuggets() {
     if (nd.y > H) {
       // Gambusino escaped — count as failure (not during level transition)
       nd.el.remove();
+      anyEscaped = true;
       if (!levelTransitioning) {
         missed++;
         updateMissedDisplay();
@@ -711,7 +713,7 @@ function updateNuggets() {
     }
   }
   nuggets = surviving;
-  checkLevelStuck();
+  if (anyEscaped) checkLevelStuck();
 }
 
 function fireBullet() {
