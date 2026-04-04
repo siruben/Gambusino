@@ -32,7 +32,10 @@ const LERP_FACTOR           = 0.12;  // smoothing factor for angle interpolation
 const BEAM_HALF_VW          = 0.25;  // half-width of beam as fraction of viewport width (matches CSS left:-25vw)
 const NUGGET_SPAWN_AREA     = 0.67;  // fraction of screen height used for nugget spawning (upper two thirds)
 const NUGGETS_START_COUNT    = 1;    // gambusinos on level 1
-const NUGGETS_LEVEL_STEP     = 2;    // extra gambusinos added per level
+const NUGGETS_LEVEL_STEP     = 1;    // extra gambusinos added per level (level N → N gambusinos)
+const NUGGET_SIZE            = 135;  // nugget element size in pixels
+const NUGGET_MIN_DIST        = 150;  // minimum top-left to top-left distance between nuggets (px)
+const NUGGET_MAX_ATTEMPTS    = 100;  // max retries to find a non-overlapping position
 const EXCELLENT_SCORE       = 10;    // score threshold for "excellent" end message
 const GOOD_SCORE            = 4;     // score threshold for "good" end message
 
@@ -156,19 +159,43 @@ function startTimer() {
 }
 
 // --- Nuggets ---
+function isTooClose(x, y, placed) {
+  return placed.some(p => Math.hypot(x - p.x, y - p.y) < NUGGET_MIN_DIST);
+}
+
 function spawnNuggets(count) {
   clearNuggets();
   const cave   = document.getElementById('nuggets-container');
   const margin = 60;
   const W = window.innerWidth;
   const H = window.innerHeight;
+  const maxX = W - 2 * margin - NUGGET_SIZE;
+  const maxY = H * NUGGET_SPAWN_AREA - margin - NUGGET_SIZE;
+  const placed = []; // top-left corner coordinates of placed nuggets
 
   for (let i = 0; i < count; i++) {
+    let x, y, retryCount = 0;
+    // Retry until a position is far enough from all placed nuggets
+    do {
+      x = margin + Math.random() * maxX;
+      y = margin + Math.random() * maxY;
+      retryCount++;
+    } while (
+      retryCount < NUGGET_MAX_ATTEMPTS &&
+      isTooClose(x, y, placed)
+    );
+
+    // If retries were exhausted and still overlapping, skip this nugget
+    if (retryCount >= NUGGET_MAX_ATTEMPTS && isTooClose(x, y, placed)) {
+      continue;
+    }
+    placed.push({ x, y });
+
     const n = document.createElement('div');
     n.className = 'nugget';
-    n.style.left = (margin + Math.random() * (W - 2 * margin - 135)) + 'px';
-    // Spawn in upper 78% of screen (below that is close to the torch apex and unreachable)
-    n.style.top  = (margin + Math.random() * (H * NUGGET_SPAWN_AREA - margin - 135)) + 'px';
+    n.style.left = x + 'px';
+    // Spawn in upper two thirds of screen (below that is close to the torch apex and unreachable)
+    n.style.top  = y + 'px';
 
     n.addEventListener('click', () => {
       if ((parseFloat(n.style.opacity) || 0) <= 0) return;
