@@ -145,6 +145,7 @@ torchBtn.addEventListener('click', () => {
   beam.classList.toggle('active', torchOn);
   if (torchOn) {
     bgMusic.play().catch(() => {});
+    gyroHint.classList.add('hidden');
   } else {
     bgMusic.pause();
   }
@@ -192,10 +193,11 @@ function startGame() {
   torchBtn.classList.remove('on');
   beam.classList.remove('active');
 
-  // Reset hint animation
+  // Reset hint — show blinking until torch is turned on
+  gyroHint.classList.remove('hidden');
   gyroHint.style.animation = 'none';
   void gyroHint.offsetHeight;
-  gyroHint.style.animation = 'fadeHint 4s ease forwards';
+  gyroHint.style.animation = 'blinkHint 1s ease-in-out infinite';
 
   sweepStartTime = null;
   currentAngle   = 0;
