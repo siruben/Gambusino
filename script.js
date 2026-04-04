@@ -158,7 +158,7 @@ function startTimer() {
 // --- Nuggets ---
 function spawnNuggets(count) {
   clearNuggets();
-  const cave   = document.getElementById('cave');
+  const cave   = document.getElementById('nuggets-container');
   const margin = 60;
   const W = window.innerWidth;
   const H = window.innerHeight;
