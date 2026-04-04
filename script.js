@@ -31,7 +31,7 @@ const MAX_GYRO_ANGLE        = 75;    // degrees — clamp range for gyroscope ga
 const LERP_FACTOR           = 0.12;  // smoothing factor for angle interpolation
 const BEAM_HALF_VW          = 0.25;  // half-width of beam as fraction of viewport width (matches CSS left:-25vw)
 const NUGGET_SPAWN_AREA     = 0.50;  // fraction of screen height used for nugget spawning (upper half)
-const NUGGETS_START_COUNT    = 3;    // gambusinos on level 1
+const NUGGETS_START_COUNT    = 1;    // gambusinos on level 1
 const NUGGETS_LEVEL_STEP     = 2;    // extra gambusinos added per level
 const EXCELLENT_SCORE       = 10;    // score threshold for "excellent" end message
 const GOOD_SCORE            = 4;     // score threshold for "good" end message
@@ -166,9 +166,9 @@ function spawnNuggets(count) {
   for (let i = 0; i < count; i++) {
     const n = document.createElement('div');
     n.className = 'nugget';
-    n.style.left = (margin + Math.random() * (W - 2 * margin - 45)) + 'px';
+    n.style.left = (margin + Math.random() * (W - 2 * margin - 135)) + 'px';
     // Spawn in upper 78% of screen (below that is close to the torch apex and unreachable)
-    n.style.top  = (margin + Math.random() * (H * NUGGET_SPAWN_AREA - margin - 45)) + 'px';
+    n.style.top  = (margin + Math.random() * (H * NUGGET_SPAWN_AREA - margin - 135)) + 'px';
 
     n.addEventListener('click', () => {
       if (!n.classList.contains('lit')) return;
@@ -250,8 +250,8 @@ function checkLight() {
   const halfAngle = Math.atan2(halfW, beamH) * (180 / Math.PI);
 
   nuggets.forEach(n => {
-    const nx = n.offsetLeft + 22;
-    const ny = n.offsetTop  + 22;
+    const nx = n.offsetLeft + 67;
+    const ny = n.offsetTop  + 67;
     const dx = nx - apexX;
     const dy = ny - apexY;
 
