@@ -37,13 +37,13 @@ body {
   background: rgba(0,0,0,0.98);
 }
 
-/* Beam visual (sweeping cone from torch) */
+/* Beam visual (triangular cone from torch, above darkness overlay) */
 #beam-container {
   position: fixed;
   bottom: 46px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 9;
+  z-index: 11;
   pointer-events: none;
   width: 0;
   height: 0;
@@ -55,9 +55,20 @@ body {
   left: -25vw;
   width: 50vw;
   height: calc(100dvh - 46px);
-  background: linear-gradient(to top, rgba(255,220,80,0.22) 0%, rgba(255,220,80,0.08) 40%, transparent 100%);
+  background:
+    /* bright central core */
+    radial-gradient(ellipse 18% 55% at 50% 100%, rgba(255,255,200,0.82) 0%, transparent 100%),
+    /* main golden beam */
+    linear-gradient(
+      to top,
+      rgba(255,215,50,0.80)  0%,
+      rgba(255,200,40,0.40) 30%,
+      rgba(255,185,30,0.15) 60%,
+      transparent           100%
+    );
   transform-origin: bottom center;
   clip-path: polygon(50% 100%, 0% 0%, 100% 0%);
+  filter: blur(4px) drop-shadow(0 0 22px rgba(255,200,40,0.65));
   opacity: 0;
   transition: opacity 0.3s;
 }
