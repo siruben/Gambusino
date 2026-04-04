@@ -44,6 +44,7 @@ let shootCooldown   = 400;   // ms between allowed shots (varies per level)
 let activePowerUp   = null;  // { type, endTime } — currently active power-up
 let spawnTimer      = null;  // interval handle for continuous nugget spawning
 let spawnedCount    = 0;     // nuggets spawned this level
+let levelSpawnTotal = 0;     // total nuggets to spawn this level (for stuck detection)
 let powerUpTimerId    = null;
 let powerUpSpawnTimer = null;
 
@@ -245,6 +246,14 @@ function endGame(reason) {
     endSub.textContent  = 'Os gambusinos escaparam!';
     endDesc.textContent =
       `${missed} gambusinos fugiram pela mina escura…\nApanhaste ${score} pontos até ao nível ${level}.`;
+  } else if (reason === 'level_failed') {
+    // Game over — level target not reached before spawns exhausted
+    endTitle.innerHTML = '💀 Nível Falhado!';
+    endTitle.classList.add('creepy-shake');
+    endTitle.classList.remove('creepy-glow');
+    endSub.textContent  = 'Não apanhaste gambusinos suficientes!';
+    endDesc.textContent =
+      `Apanhaste ${levelKills} de ${levelTarget} gambusinos no nível ${level}.\nTotal: ${score} pontos.`;
   } else {
     // Generic end (shouldn't normally be reached in kill-count mode)
     const msg = score > EXCELLENT_SCORE ? 'Excelente trabalho!'
@@ -317,6 +326,7 @@ function startLevelSpawning(config) {
   // Spawn 50% extra beyond the kill target so there are always targets available
   // and to account for gambusinos that escape without being killed
   const totalToSpawn = config.target + Math.ceil(config.target * 0.5);
+  levelSpawnTotal = totalToSpawn;
 
   // First gambusino appears immediately
   spawnOneNugget(config);
@@ -449,6 +459,8 @@ function killNugget(nd) {
   // Level complete?
   if (levelKills >= levelTarget && !levelTransitioning) {
     transitionToNextLevel();
+  } else {
+    checkLevelStuck();
   }
 }
 
@@ -562,6 +574,16 @@ function gameOverByMiss() {
 }
 
 // ============================================================
+// STUCK DETECTION — all spawns exhausted, level not complete
+// ============================================================
+function checkLevelStuck() {
+  if (!gameActive || levelTransitioning || levelKills >= levelTarget) return;
+  if (nuggets.length === 0 && spawnedCount >= levelSpawnTotal) {
+    endGame('level_failed');
+  }
+}
+
+// ============================================================
 // NUGGET UTILITIES
 // ============================================================
 function isTooClose(x, y, placed) {
@@ -665,6 +687,7 @@ function updateNuggets() {
   const slowFactor = (activePowerUp && activePowerUp.type === 'slowmo'
                       && performance.now() < activePowerUp.endTime) ? 0.4 : 1;
   const surviving = [];
+  let anyEscaped = false;
   for (const nd of nuggets) {
     nd.x += nd.vx * slowFactor;
     nd.y += nd.vy * slowFactor;
@@ -676,6 +699,7 @@ function updateNuggets() {
     if (nd.y > H) {
       // Gambusino escaped — count as failure (not during level transition)
       nd.el.remove();
+      anyEscaped = true;
       if (!levelTransitioning) {
         missed++;
         updateMissedDisplay();
@@ -689,6 +713,7 @@ function updateNuggets() {
     }
   }
   nuggets = surviving;
+  if (anyEscaped) checkLevelStuck();
 }
 
 function fireBullet() {
