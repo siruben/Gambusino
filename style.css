@@ -99,16 +99,8 @@ body {
   opacity: 0;
   pointer-events: none;
   transform: scale(0.7);
-  transition: opacity 0.2s, transform 0.2s, filter 0.2s;
   -webkit-tap-highlight-color: transparent;
   outline: none;
-}
-
-.nugget.lit {
-  opacity: 1;
-  pointer-events: auto;
-  transform: scale(1);
-  filter: brightness(2.2) drop-shadow(0 0 22px #FFD700) drop-shadow(0 0 8px #fff);
 }
 
 .nugget.caught {

@@ -171,7 +171,10 @@ function spawnNuggets(count) {
     n.style.top  = (margin + Math.random() * (H * NUGGET_SPAWN_AREA - margin - 135)) + 'px';
 
     n.addEventListener('click', () => {
-      if (!n.classList.contains('lit')) return;
+      if ((parseFloat(n.style.opacity) || 0) <= 0) return;
+      n.style.opacity = '';
+      n.style.transform = '';
+      n.style.filter = '';
       n.classList.add('caught');
       score++;
       scoreEl.textContent = score;
@@ -256,11 +259,32 @@ function checkLight() {
     const dy = ny - apexY;
 
     // Nugget must be above the apex (beam only points upward)
-    if (dy >= 0) { n.classList.toggle('lit', false); return; }
+    if (dy >= 0) {
+      n.style.opacity       = '0';
+      n.style.pointerEvents = 'none';
+      n.style.transform     = 'scale(0.7)';
+      n.style.filter        = '';
+      return;
+    }
 
     // Angle from apex to nugget measured from "pointing straight up"
     const nuggetAngle = Math.atan2(dx, -dy) * (180 / Math.PI);
-    n.classList.toggle('lit', Math.abs(nuggetAngle - currentAngle) <= halfAngle);
+    const angleDiff   = Math.abs(nuggetAngle - currentAngle);
+    const intensity   = Math.max(0, Math.min(1, 1 - angleDiff / halfAngle));
+
+    n.style.opacity       = intensity;
+    n.style.pointerEvents = intensity > 0 ? 'auto' : 'none';
+    n.style.transform     = `scale(${(0.7 + 0.3 * intensity).toFixed(2)})`;
+
+    if (intensity > 0) {
+      const brightness = (1 + 1.2 * intensity).toFixed(2);
+      const glow1      = Math.round(22 * intensity);
+      const glow2      = Math.round(8  * intensity);
+      const alpha      = intensity.toFixed(2);
+      n.style.filter   = `brightness(${brightness}) drop-shadow(0 0 ${glow1}px rgba(255,215,0,${alpha})) drop-shadow(0 0 ${glow2}px rgba(255,255,255,${alpha}))`;
+    } else {
+      n.style.filter = '';
+    }
   });
 }
 
