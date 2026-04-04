@@ -552,8 +552,12 @@ body {
   50%       { opacity: 0.65; }
 }
 
-/* Power-up pickup (collectable floating on screen) */
-.powerup-pickup {
+/* Level 30 final-level sub-text inside the level message banner */
+.level-msg-sub {
+  font-size: 0.55em;
+  opacity: 0.85;
+  display: block;
+}
   position: fixed;
   padding: 8px 16px;
   border-radius: 24px;

@@ -91,8 +91,17 @@ const MIN_SHOOT_COOLDOWN  = 250;  // ms floor at high levels
 const COMBO_TIMEOUT = 3000;  // ms window between kills to maintain combo
 
 // Power-ups
-const POWERUP_DURATION      = 5000;   // ms each power-up lasts
-const POWERUP_SPAWN_INTERVAL = 25000; // ms between power-up spawns
+const POWERUP_DURATION        = 5000;   // ms each power-up lasts
+const POWERUP_SPAWN_INTERVAL  = 25000;  // ms between power-up spawns
+// Power-up pickup lifetime: auto-removed if player doesn't collect it in time
+// Intentionally shorter than POWERUP_SPAWN_INTERVAL so the screen stays uncluttered
+const POWERUP_PICKUP_LIFETIME = 8000;   // ms
+
+// Level 30 boss: everything maxed out
+const BOSS_SPEED_MULTIPLIER   = 3.5;   // speed multiplier vs base
+const BOSS_ZIG_MULTIPLIER     = 3.0;   // zig-zag multiplier vs base
+const BOSS_TARGET             = 40;    // kills required to beat the boss level
+const BOSS_SPAWN_INTERVAL     = 350;   // ms between spawns
 
 // Game-over condition
 const MAX_MISSED = 7;  // escaped gambusinos allowed before game over
@@ -280,12 +289,12 @@ function getLevelConfig(lvl) {
     spawnInterval  = Math.round(spawnInterval * 1.4);
   }
 
-  // Level 30 boss: everything maxed
+  // Level 30 boss: everything maxed out
   if (lvl === MAX_LEVELS) {
-    speed         = NUGGET_BASE_SPEED * 3.5;
-    zigSpeed      = NUGGET_ZIG_SPEED  * 3.0;
-    target        = 40;
-    spawnInterval = 350;
+    speed         = NUGGET_BASE_SPEED * BOSS_SPEED_MULTIPLIER;
+    zigSpeed      = NUGGET_ZIG_SPEED  * BOSS_ZIG_MULTIPLIER;
+    target        = BOSS_TARGET;
+    spawnInterval = BOSS_SPAWN_INTERVAL;
   }
 
   // Rare gambusinos start appearing from level 5, probability grows
@@ -305,7 +314,8 @@ function getLevelConfig(lvl) {
 function startLevelSpawning(config) {
   clearInterval(spawnTimer);
   spawnedCount = 0;
-  // Spawn 50% more than target so there's always something to shoot
+  // Spawn 50% extra beyond the kill target so there are always targets available
+  // and to account for gambusinos that escape without being killed
   const totalToSpawn = config.target + Math.ceil(config.target * 0.5);
 
   // First gambusino appears immediately
@@ -374,7 +384,7 @@ function transitionToNextLevel() {
   const levelMsg = document.getElementById('level-msg');
   if (level === MAX_LEVELS) {
     levelMsg.innerHTML =
-      '⚠️ NÍVEL FINAL ⚠️<br><span style="font-size:0.55em;opacity:0.85">Que comecem os jogos…</span>';
+      '⚠️ NÍVEL FINAL ⚠️<br><span class="level-msg-sub">Que comecem os jogos…</span>';
   } else {
     levelMsg.textContent = 'Nível ' + level;
   }
@@ -461,6 +471,8 @@ function damageFeedback(nd) {
 function updateCombo() {
   clearTimeout(comboTimerId);
   combo++;
+  // Combo multiplier progression: every 2 consecutive kills adds +1x (capped at x5)
+  // 1 kill = x1, 2 kills = x2, 4 kills = x3, 6 kills = x4, 8+ kills = x5
   comboMultiplier = Math.min(5, 1 + Math.floor(combo / 2));
   showComboDisplay();
   comboTimerId = setTimeout(resetCombo, COMBO_TIMEOUT);
@@ -525,8 +537,8 @@ function spawnPowerUp() {
   document.body.appendChild(el);
 
   el.addEventListener('click', () => collectPowerUp(type, el));
-  // Auto-remove if not collected
-  setTimeout(() => { if (el.parentNode) el.remove(); }, 8000);
+  // Auto-remove after POWERUP_PICKUP_LIFETIME if the player doesn't collect it
+  setTimeout(() => { if (el.parentNode) el.remove(); }, POWERUP_PICKUP_LIFETIME);
 }
 
 function collectPowerUp(type, el) {
@@ -755,7 +767,8 @@ function updateBullets() {
     }
 
     let destroyBullet = false;
-    // Iterate backwards so we can safely remove nuggets during iteration
+    // Iterate backwards: hitNugget() may splice from the nuggets array via killNugget(),
+    // so reverse iteration avoids index skipping after removal
     for (let i = nuggets.length - 1; i >= 0; i--) {
       const nd = nuggets[i];
       if (Math.hypot(b.x - (nd.x + nd.half), b.y - (nd.y + nd.half)) < nd.half) {
