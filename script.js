@@ -25,17 +25,20 @@ let timerHandle = null;
 let timeLeft   = 0;
 
 const LEVEL_DURATION        = 30000; // ms
-const BEAM_RADIUS           = 110;   // px — spotlight radius
-const BEAM_DETECTION_FACTOR = 0.78;  // fraction of BEAM_RADIUS used for nugget hit detection
+const BEAM_SWEEP_PERIOD     = 3500;  // ms — duration of one full left-right-left sweep cycle (fallback)
+const MAX_SWEEP_ANGLE       = 65;    // degrees — max auto-sweep angle (fallback, no gyro)
+const MAX_GYRO_ANGLE        = 75;    // degrees — clamp range for gyroscope gamma input
+const LERP_FACTOR           = 0.12;  // smoothing factor for angle interpolation
+const BEAM_HALF_VW          = 0.25;  // half-width of beam as fraction of viewport width (matches CSS left:-25vw)
+const NUGGET_SPAWN_AREA     = 0.78;  // fraction of screen height used for nugget spawning (upper portion)
 const NUGGETS_PER_LEVEL     = [8, 10, 12, 15, 18];
 const EXCELLENT_SCORE       = 10;    // score threshold for "excellent" end message
 const GOOD_SCORE            = 4;     // score threshold for "good" end message
-const BEAM_SWEEP_PERIOD     = 3500;  // ms — duration of one full left-right-left sweep cycle
-const BEAM_Y_FACTOR         = 0.45;  // fraction of screen height for fixed beam vertical position
 
-// --- Beam position state ---
-let beamX          = window.innerWidth  / 2;
-let beamY          = window.innerHeight * BEAM_Y_FACTOR;
+// --- Beam angle state ---
+let currentAngle   = 0;    // smoothly interpolated beam rotation angle (degrees)
+let targetAngle    = 0;    // target angle (from gyro or auto-sweep)
+let hasGyro        = false; // whether a gyroscope is providing data
 let sweepStartTime = null;
 let rafId          = null;
 
@@ -56,8 +59,14 @@ torchBtn.addEventListener('click', () => {
 });
 
 // --- Start / Restart ---
-document.getElementById('start-btn').addEventListener('click', startGame);
-document.getElementById('restart-btn').addEventListener('click', startGame);
+document.getElementById('start-btn').addEventListener('click', async () => {
+  await requestGyroPermission();
+  startGame();
+});
+document.getElementById('restart-btn').addEventListener('click', async () => {
+  await requestGyroPermission();
+  startGame();
+});
 
 function startGame() {
   score  = 0;
@@ -80,6 +89,8 @@ function startGame() {
   gyroHint.style.animation = 'fadeHint 4s ease forwards';
 
   sweepStartTime = null;
+  currentAngle   = 0;
+  targetAngle    = 0;
 
   clearNuggets();
   spawnNuggets(NUGGETS_PER_LEVEL[0]);
@@ -100,7 +111,7 @@ function endGame() {
   sweepStartTime = null;
   clearNuggets();
   clearInterval(timerHandle);
-  setDarkness(-9999, -9999);
+  setDarkness();
 
   bgMusic.pause();
   bgMusic.currentTime = 0;
@@ -150,16 +161,13 @@ function spawnNuggets(count) {
   const margin = 60;
   const W = window.innerWidth;
   const H = window.innerHeight;
-  const bY     = Math.round(H * BEAM_Y_FACTOR);
-  const spread = Math.round(BEAM_RADIUS * BEAM_DETECTION_FACTOR * 0.75); // ~62px
 
   for (let i = 0; i < count; i++) {
     const n = document.createElement('div');
     n.className = 'nugget';
     n.style.left = (margin + Math.random() * (W - 2 * margin - 30)) + 'px';
-    const minTop = Math.max(margin, bY - spread - 15);
-    const maxTop = Math.min(H - margin - 30, bY + spread - 15);
-    n.style.top  = (minTop + Math.random() * (maxTop - minTop)) + 'px';
+    // Spawn in upper 78% of screen (below that is close to the torch apex and unreachable)
+    n.style.top  = (margin + Math.random() * (H * NUGGET_SPAWN_AREA - margin - 30)) + 'px';
 
     n.addEventListener('click', () => {
       if (!n.classList.contains('lit')) return;
@@ -196,49 +204,81 @@ function rafLoop() {
 
   if (!gameActive) return;
 
-  // Continuous horizontal sweep using a sine wave
   const now = performance.now();
-  if (sweepStartTime === null) sweepStartTime = now;
-  const t = ((now - sweepStartTime) % BEAM_SWEEP_PERIOD) / BEAM_SWEEP_PERIOD;
-  beamX = (Math.sin(t * Math.PI * 2 - Math.PI / 2) * 0.5 + 0.5) * window.innerWidth;
-  beamY = window.innerHeight * BEAM_Y_FACTOR;
+
+  if (hasGyro) {
+    // Smooth interpolation toward gyroscope angle
+    currentAngle += (targetAngle - currentAngle) * LERP_FACTOR;
+  } else {
+    // Fallback: automatic horizontal sweep via sine wave
+    if (sweepStartTime === null) sweepStartTime = now;
+    const t = ((now - sweepStartTime) % BEAM_SWEEP_PERIOD) / BEAM_SWEEP_PERIOD;
+    const sweepAngle = Math.sin(t * Math.PI * 2 - Math.PI / 2) * MAX_SWEEP_ANGLE;
+    currentAngle += (sweepAngle - currentAngle) * LERP_FACTOR;
+  }
 
   if (!torchOn) return;
 
-  setDarkness(beamX, beamY);
-  updateBeamVisual(beamX, beamY);
+  updateBeamVisual();
   checkLight();
 }
 
-function setDarkness(x, y) {
-  darkness.style.background = [
-    `radial-gradient(circle ${BEAM_RADIUS}px at ${x}px ${y}px,`,
-    `  rgba(255,220,100,0.04) 0%,`,
-    `  transparent 38%,`,
-    `  rgba(0,0,0,0.88) 62%,`,
-    `  rgba(0,0,0,0.98) 100%)`
-  ].join('\n');
+function setDarkness() {
+  // The triangular beam provides all illumination; keep background fully dark
+  darkness.style.background = 'rgba(0,0,0,0.96)';
 }
 
-function updateBeamVisual(x, y) {
-  // Rotate the beam cone from torch (bottom center) toward spotlight
-  const torchX = window.innerWidth  / 2;
-  const torchY = window.innerHeight - 46;
-  const dx = x - torchX;
-  const dy = y - torchY;
-  const angleDeg = Math.atan2(dx, -dy) * (180 / Math.PI);
-  beam.style.transform = `rotate(${angleDeg}deg)`;
+function updateBeamVisual() {
+  beam.style.transform = `rotate(${currentAngle}deg)`;
 }
 
 function checkLight() {
+  const apexX     = window.innerWidth  / 2;
+  const apexY     = window.innerHeight - 46;
+  const halfW     = window.innerWidth  * BEAM_HALF_VW;
+  const beamH     = window.innerHeight - 46;
+  const halfAngle = Math.atan2(halfW, beamH) * (180 / Math.PI);
+
   nuggets.forEach(n => {
     const nx = n.offsetLeft + 15;
     const ny = n.offsetTop  + 15;
-    const dx = nx - beamX;
-    const dy = ny - beamY;
-    const lit = (dx * dx + dy * dy) < (BEAM_RADIUS * BEAM_DETECTION_FACTOR) * (BEAM_RADIUS * BEAM_DETECTION_FACTOR);
-    n.classList.toggle('lit', lit);
+    const dx = nx - apexX;
+    const dy = ny - apexY;
+
+    // Nugget must be above the apex (beam only points upward)
+    if (dy >= 0) { n.classList.toggle('lit', false); return; }
+
+    // Angle from apex to nugget measured from "pointing straight up"
+    const nuggetAngle = Math.atan2(dx, -dy) * (180 / Math.PI);
+    n.classList.toggle('lit', Math.abs(nuggetAngle - currentAngle) <= halfAngle);
   });
+}
+
+// --- Gyroscope ---
+function onDeviceOrientation(e) {
+  if (e.gamma === null) return;
+  hasGyro = true;
+  // gamma: left/right tilt (-90 to +90). Clamp to a playable range.
+  targetAngle = Math.max(-MAX_GYRO_ANGLE, Math.min(MAX_GYRO_ANGLE, e.gamma));
+}
+
+async function requestGyroPermission() {
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function') {
+    // iOS 13+ requires an explicit user-gesture permission request
+    try {
+      const perm = await DeviceOrientationEvent.requestPermission();
+      if (perm === 'granted') {
+        window.addEventListener('deviceorientation', onDeviceOrientation, { passive: true });
+      }
+    } catch (e) { /* silently ignore — will fall back to auto-sweep */ }
+  }
+}
+
+// Non-iOS: attach gyro listener immediately
+if (typeof DeviceOrientationEvent !== 'undefined' &&
+    typeof DeviceOrientationEvent.requestPermission !== 'function') {
+  window.addEventListener('deviceorientation', onDeviceOrientation, { passive: true });
 }
 
 // --- Stars ---
@@ -266,4 +306,4 @@ initStars('stars',  60);
 initStars('stars2', 80);
 
 // Initialise darkness to full black before game starts
-setDarkness(-9999, -9999);
+setDarkness();
