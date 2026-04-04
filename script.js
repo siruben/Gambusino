@@ -31,7 +31,8 @@ const MAX_GYRO_ANGLE        = 75;    // degrees — clamp range for gyroscope ga
 const LERP_FACTOR           = 0.12;  // smoothing factor for angle interpolation
 const BEAM_HALF_VW          = 0.25;  // half-width of beam as fraction of viewport width (matches CSS left:-25vw)
 const NUGGET_SPAWN_AREA     = 0.50;  // fraction of screen height used for nugget spawning (upper half)
-const NUGGETS_PER_LEVEL     = [8, 10, 12, 15, 18];
+const NUGGETS_START_COUNT    = 3;    // gambusinos on level 1
+const NUGGETS_LEVEL_STEP     = 2;    // extra gambusinos added per level
 const EXCELLENT_SCORE       = 10;    // score threshold for "excellent" end message
 const GOOD_SCORE            = 4;     // score threshold for "good" end message
 
@@ -93,7 +94,7 @@ function startGame() {
   targetAngle    = 0;
 
   clearNuggets();
-  spawnNuggets(NUGGETS_PER_LEVEL[0]);
+  spawnNuggets(NUGGETS_START_COUNT);
   startTimer();
 
   bgMusic.currentTime = 0;
@@ -165,9 +166,9 @@ function spawnNuggets(count) {
   for (let i = 0; i < count; i++) {
     const n = document.createElement('div');
     n.className = 'nugget';
-    n.style.left = (margin + Math.random() * (W - 2 * margin - 30)) + 'px';
+    n.style.left = (margin + Math.random() * (W - 2 * margin - 45)) + 'px';
     // Spawn in upper 78% of screen (below that is close to the torch apex and unreachable)
-    n.style.top  = (margin + Math.random() * (H * NUGGET_SPAWN_AREA - margin - 30)) + 'px';
+    n.style.top  = (margin + Math.random() * (H * NUGGET_SPAWN_AREA - margin - 45)) + 'px';
 
     n.addEventListener('click', () => {
       if (!n.classList.contains('lit')) return;
@@ -194,7 +195,16 @@ function nextLevel() {
   levelEl.textContent = level;
   timeLeft = LEVEL_DURATION;
   timerBar.style.width = '100%';
-  const count = NUGGETS_PER_LEVEL[Math.min(level - 1, NUGGETS_PER_LEVEL.length - 1)];
+  const count = NUGGETS_START_COUNT + (level - 1) * NUGGETS_LEVEL_STEP;
+
+  const levelMsg = document.getElementById('level-msg');
+  levelMsg.textContent = `Nível ${level}`;
+  levelMsg.classList.remove('hidden');
+  levelMsg.style.animation = 'none';
+  void levelMsg.offsetHeight;
+  levelMsg.style.animation = 'levelMsgAnim 2s ease forwards';
+  setTimeout(() => levelMsg.classList.add('hidden'), 2000);
+
   spawnNuggets(count);
 }
 
@@ -240,8 +250,8 @@ function checkLight() {
   const halfAngle = Math.atan2(halfW, beamH) * (180 / Math.PI);
 
   nuggets.forEach(n => {
-    const nx = n.offsetLeft + 15;
-    const ny = n.offsetTop  + 15;
+    const nx = n.offsetLeft + 22;
+    const ny = n.offsetTop  + 22;
     const dx = nx - apexX;
     const dy = ny - apexY;
 

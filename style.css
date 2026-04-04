@@ -74,17 +74,18 @@ body {
 }
 
 #beam.active {
-  opacity: 1;
+  opacity: 0.75;
 }
 
 /* Gambusino nuggets */
 .nugget {
   position: absolute;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #ffe066, #b8860b 70%);
-  box-shadow: 0 0 10px 2px rgba(255,215,0,0.6);
+  width: 45px;
+  height: 45px;
+  background-image: url('Gambusino.png');
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
   cursor: pointer;
   z-index: 15;
   opacity: 0;
@@ -286,4 +287,28 @@ body {
 }
   from { opacity: 0.08; }
   to   { opacity: 0.75; }
+}
+
+/* Level change message */
+#level-msg {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 36px;
+  font-weight: bold;
+  color: #FFD700;
+  text-shadow: 0 0 28px rgba(255,215,0,0.9);
+  z-index: 150;
+  text-align: center;
+  pointer-events: none;
+}
+
+#level-msg.hidden { display: none; }
+
+@keyframes levelMsgAnim {
+  0%   { opacity: 0; transform: translate(-50%, -60%); }
+  20%  { opacity: 1; transform: translate(-50%, -50%); }
+  70%  { opacity: 1; transform: translate(-50%, -50%); }
+  100% { opacity: 0; transform: translate(-50%, -40%); }
 }
