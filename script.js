@@ -23,7 +23,6 @@ let score      = 0;
 let level      = 1;
 let timerHandle = null;
 let timeLeft   = 0;
-let gyroEnabled = false;
 
 const LEVEL_DURATION        = 30000; // ms
 const BEAM_RADIUS           = 110;   // px — spotlight radius
@@ -31,17 +30,14 @@ const BEAM_DETECTION_FACTOR = 0.78;  // fraction of BEAM_RADIUS used for nugget 
 const NUGGETS_PER_LEVEL     = [8, 10, 12, 15, 18];
 const EXCELLENT_SCORE       = 10;    // score threshold for "excellent" end message
 const GOOD_SCORE            = 4;     // score threshold for "good" end message
-// Gyro beta angle range: phone held upright ~90°, tilting forward decreases beta
-const BETA_MIN          = 10;   // degrees — maps to bottom of screen
-const BETA_RANGE        = 70;   // degrees — total mapped range (BETA_MIN to BETA_MIN+BETA_RANGE)
-const Y_COVERAGE_FACTOR = 0.85; // fraction of screen height used for vertical beam travel
+const BEAM_SWEEP_PERIOD     = 3500;  // ms — duration of one full left-right-left sweep cycle
+const BEAM_Y_FACTOR         = 0.45;  // fraction of screen height for fixed beam vertical position
 
 // --- Beam position state ---
-let beamX       = window.innerWidth  / 2;
-let beamY       = window.innerHeight / 2;
-let targetBeamX = window.innerWidth  / 2;
-let targetBeamY = window.innerHeight / 2;
-let rafId       = null;
+let beamX          = window.innerWidth  / 2;
+let beamY          = window.innerHeight * BEAM_Y_FACTOR;
+let sweepStartTime = null;
+let rafId          = null;
 
 // --- Nuggets ---
 let nuggets = [];
@@ -53,7 +49,6 @@ torchBtn.addEventListener('click', () => {
   torchBtn.classList.toggle('on', torchOn);
   beam.classList.toggle('active', torchOn);
   if (torchOn) {
-    if (!gyroEnabled) requestGyro();
     bgMusic.play().catch(() => {});
   } else {
     bgMusic.pause();
@@ -68,7 +63,7 @@ function startGame() {
   score  = 0;
   level  = 1;
   gameActive = true;
-  torchOn    = false;
+  torchOn    = true;
 
   scoreEl.textContent = '0';
   levelEl.textContent = '1';
@@ -76,20 +71,22 @@ function startGame() {
   startScreen.classList.add('hidden');
   endScreen.classList.add('hidden');
 
-  torchBtn.classList.remove('on');
-  beam.classList.remove('active');
+  torchBtn.classList.add('on');
+  beam.classList.add('active');
 
-  // Reset gyro hint animation
+  // Reset hint animation
   gyroHint.style.animation = 'none';
   void gyroHint.offsetHeight;
   gyroHint.style.animation = 'fadeHint 4s ease forwards';
 
+  sweepStartTime = null;
+
   clearNuggets();
   spawnNuggets(NUGGETS_PER_LEVEL[0]);
   startTimer();
-  requestGyro();
 
   bgMusic.currentTime = 0;
+  bgMusic.play().catch(() => {});
 
   if (!rafId) rafLoop();
 }
@@ -100,6 +97,7 @@ function endGame() {
   torchBtn.classList.remove('on');
   beam.classList.remove('active');
 
+  sweepStartTime = null;
   clearNuggets();
   clearInterval(timerHandle);
   setDarkness(-9999, -9999);
@@ -152,12 +150,16 @@ function spawnNuggets(count) {
   const margin = 60;
   const W = window.innerWidth;
   const H = window.innerHeight;
+  const bY     = Math.round(H * BEAM_Y_FACTOR);
+  const spread = Math.round(BEAM_RADIUS * BEAM_DETECTION_FACTOR * 0.75); // ~62px
 
   for (let i = 0; i < count; i++) {
     const n = document.createElement('div');
     n.className = 'nugget';
     n.style.left = (margin + Math.random() * (W - 2 * margin - 30)) + 'px';
-    n.style.top  = (margin + Math.random() * (H - 2 * margin - 120)) + 'px';
+    const minTop = Math.max(margin, bY - spread - 15);
+    const maxTop = Math.min(H - margin - 30, bY + spread - 15);
+    n.style.top  = (minTop + Math.random() * (maxTop - minTop)) + 'px';
 
     n.addEventListener('click', () => {
       if (!n.classList.contains('lit')) return;
@@ -188,61 +190,20 @@ function nextLevel() {
   spawnNuggets(count);
 }
 
-// --- Gyroscope ---
-function requestGyro() {
-  if (typeof DeviceOrientationEvent === 'undefined') return;
-
-  if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-    // iOS 13+ requires explicit user permission
-    DeviceOrientationEvent.requestPermission()
-      .then(permission => {
-        if (permission === 'granted') {
-          window.addEventListener('deviceorientation', onGyro, true);
-          gyroEnabled = true;
-        }
-      })
-      .catch(() => {});
-  } else {
-    window.addEventListener('deviceorientation', onGyro, true);
-    gyroEnabled = true;
-  }
-}
-
-function onGyro(e) {
-  if (!gameActive || !torchOn) return;
-  if (e.gamma == null || e.beta == null) return;
-
-  // gamma: -90..90  → left/right tilt → X position
-  const gamma = Math.max(-45, Math.min(45, e.gamma));
-  // beta: 0..90 when phone upright → forward/back tilt → Y position
-  const beta  = Math.max(BETA_MIN, Math.min(BETA_MIN + BETA_RANGE, e.beta));
-
-  targetBeamX = ((gamma + 45) / 90)  * window.innerWidth;
-  targetBeamY = (1 - (beta - BETA_MIN) / BETA_RANGE) * (window.innerHeight * Y_COVERAGE_FACTOR);
-}
-
-// --- Touch / Mouse fallback (used when no gyro or on desktop) ---
-function onPointerMove(e) {
-  if (!gameActive || !torchOn || gyroEnabled) return;
-  const pt = e.touches ? e.touches[0] : e;
-  targetBeamX = pt.clientX;
-  targetBeamY = pt.clientY;
-}
-
-document.addEventListener('mousemove', onPointerMove);
-document.addEventListener('touchmove', e => {
-  onPointerMove(e);
-}, { passive: true });
-
 // --- rAF animation loop ---
 function rafLoop() {
   rafId = requestAnimationFrame(rafLoop);
 
-  if (!torchOn || !gameActive) return;
+  if (!gameActive) return;
 
-  // Smooth interpolation (lerp)
-  beamX += (targetBeamX - beamX) * 0.12;
-  beamY += (targetBeamY - beamY) * 0.12;
+  // Continuous horizontal sweep using a sine wave
+  const now = performance.now();
+  if (sweepStartTime === null) sweepStartTime = now;
+  const t = ((now - sweepStartTime) % BEAM_SWEEP_PERIOD) / BEAM_SWEEP_PERIOD;
+  beamX = (Math.sin(t * Math.PI * 2 - Math.PI / 2) * 0.5 + 0.5) * window.innerWidth;
+  beamY = window.innerHeight * BEAM_Y_FACTOR;
+
+  if (!torchOn) return;
 
   setDarkness(beamX, beamY);
   updateBeamVisual(beamX, beamY);
