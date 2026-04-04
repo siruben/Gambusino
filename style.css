@@ -57,18 +57,18 @@ body {
   height: calc(100dvh - 46px);
   background:
     /* bright central core */
-    radial-gradient(ellipse 18% 55% at 50% 100%, rgba(255,255,200,0.35) 0%, transparent 100%),
+    radial-gradient(ellipse 18% 55% at 50% 100%, rgba(255,255,220,0.70) 0%, transparent 100%),
     /* main golden beam */
     linear-gradient(
       to top,
-      rgba(255,215,50,0.35)  0%,
-      rgba(255,200,40,0.18) 30%,
-      rgba(255,185,30,0.07) 60%,
+      rgba(255,215,50,0.55)  0%,
+      rgba(255,200,40,0.32) 30%,
+      rgba(255,185,30,0.14) 60%,
       transparent           100%
     );
   transform-origin: bottom center;
   clip-path: polygon(50% 100%, 0% 0%, 100% 0%);
-  filter: blur(4px) drop-shadow(0 0 14px rgba(255,200,40,0.35));
+  filter: blur(1px) drop-shadow(0 0 18px rgba(255,200,40,0.55));
   opacity: 0;
   transition: opacity 0.3s;
 }
@@ -97,10 +97,10 @@ body {
 }
 
 .nugget.lit {
-  opacity: 0.9;
+  opacity: 1;
   pointer-events: auto;
   transform: scale(1);
-  filter: brightness(1.5) drop-shadow(0 0 14px #FFD700);
+  filter: brightness(2.2) drop-shadow(0 0 22px #FFD700) drop-shadow(0 0 8px #fff);
 }
 
 .nugget.caught {
