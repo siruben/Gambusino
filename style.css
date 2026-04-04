@@ -461,3 +461,134 @@ body {
     0 0 32px rgba(57,255,20,0.4),
     0 0 6px  rgba(255,255,255,0.5) !important;
 }
+
+/* ===== NEW MECHANICS STYLES ===== */
+
+/* Rare gambusino — uses Gambusinoraro.png, larger, pulsing red glow */
+.nugget.rare {
+  background-image: url('Gambusinoraro.png');
+  animation: rareGlowPulse 0.7s ease-in-out infinite alternate;
+}
+
+@keyframes rareGlowPulse {
+  from { filter: drop-shadow(0 0 10px rgba(255,0,80,0.75)) brightness(1); }
+  to   { filter: drop-shadow(0 0 26px rgba(255,80,0,1)) brightness(1.45) saturate(1.4); }
+}
+
+/* Override catch animation for rare: bigger dramatic pop */
+.nugget.rare.caught {
+  animation: nuggetRareCatch 0.45s ease forwards !important;
+}
+
+@keyframes nuggetRareCatch {
+  0%   { transform: scale(1);   opacity: 1;   filter: brightness(1); }
+  20%  { transform: scale(2.4); opacity: 1;   filter: brightness(6) hue-rotate(120deg) saturate(3); }
+  60%  { transform: scale(0.4); opacity: 0.7; filter: brightness(2.5); }
+  100% { transform: scale(0);   opacity: 0;   filter: brightness(1); }
+}
+
+/* Damage flash for rare (HP > 1 hits) */
+.nugget.hit-flash {
+  animation: hitFlash 0.22s ease forwards !important;
+}
+
+@keyframes hitFlash {
+  0%   { filter: brightness(1) invert(0); }
+  40%  { filter: brightness(8) invert(1) hue-rotate(180deg); }
+  100% { filter: brightness(1) invert(0); }
+}
+
+/* HUD sub-label (missed counter) */
+.hud-sub {
+  font-size: 13px;
+  color: #ff4444;
+  font-weight: bold;
+  text-shadow: 0 0 8px rgba(255,68,68,0.5);
+  line-height: 1.3;
+}
+
+/* Combo display */
+#combo-display {
+  position: fixed;
+  top: 75px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 26px;
+  font-weight: bold;
+  color: #ff6600;
+  text-shadow: 0 0 16px rgba(255,100,0,0.9), 0 0 4px #fff;
+  z-index: 100;
+  pointer-events: none;
+  letter-spacing: 0.06em;
+}
+
+@keyframes comboPulse {
+  0%   { transform: translateX(-50%) scale(0.65); opacity: 0.5; }
+  50%  { transform: translateX(-50%) scale(1.3);  opacity: 1;   }
+  100% { transform: translateX(-50%) scale(1);    opacity: 1;   }
+}
+
+/* Active power-up indicator (bottom centre) */
+#powerup-indicator {
+  position: fixed;
+  bottom: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 18px;
+  border-radius: 20px;
+  background: rgba(0,0,0,0.8);
+  border: 1.5px solid #39ff14;
+  color: #39ff14;
+  font-size: 13px;
+  font-weight: bold;
+  z-index: 100;
+  pointer-events: none;
+  text-shadow: 0 0 8px rgba(57,255,20,0.7);
+  animation: powerupPulse 1s ease-in-out infinite;
+}
+
+@keyframes powerupPulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.65; }
+}
+
+/* Power-up pickup (collectable floating on screen) */
+.powerup-pickup {
+  position: fixed;
+  padding: 8px 16px;
+  border-radius: 24px;
+  background: rgba(255,215,0,0.12);
+  border: 2px solid #FFD700;
+  color: #FFD700;
+  font-size: 14px;
+  font-weight: bold;
+  z-index: 30;
+  cursor: pointer;
+  text-shadow: 0 0 10px rgba(255,215,0,0.8);
+  pointer-events: auto;
+  animation: powerupFloat 2s ease-in-out infinite;
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+}
+
+@keyframes powerupFloat {
+  0%, 100% { transform: translateY(0) scale(1);    }
+  50%       { transform: translateY(-9px) scale(1.05); }
+}
+
+/* Shoot button flash on fire */
+#shoot-btn.shoot-flash {
+  background: rgba(57,255,20,0.45) !important;
+  box-shadow: 0 0 44px rgba(57,255,20,1), 0 0 80px rgba(57,255,20,0.5) !important;
+}
+
+/* Shoot button shake when cooldown not ready */
+#shoot-btn.cooldown-reject {
+  animation: cooldownReject 0.22s ease !important;
+}
+
+@keyframes cooldownReject {
+  0%, 100% { transform: scale(1); }
+  30%       { transform: scale(0.82) rotate(-6deg); }
+  70%       { transform: scale(0.82) rotate(6deg); }
+}

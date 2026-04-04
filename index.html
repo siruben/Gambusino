@@ -30,12 +30,17 @@
 <!-- HUD -->
 <div id="hud">
   <div>
-    <div class="hud-label">Gambusinos</div>
+    <div class="hud-label">Pontos</div>
     <div class="hud-value" id="score">0</div>
+  </div>
+  <div style="text-align:center">
+    <div class="hud-label">Progresso</div>
+    <div class="hud-value" id="progress-display">—</div>
   </div>
   <div style="text-align:right">
     <div class="hud-label">Nível</div>
     <div class="hud-value" id="level-display">1</div>
+    <div class="hud-sub" id="missed-display">❌ 0/7</div>
   </div>
 </div>
 
@@ -49,6 +54,12 @@
 
 <!-- LEVEL MESSAGE -->
 <div id="level-msg" class="hidden"></div>
+
+<!-- COMBO DISPLAY -->
+<div id="combo-display" class="hidden">COMBO <span id="combo-value">x2</span></div>
+
+<!-- POWER-UP INDICATOR -->
+<div id="powerup-indicator" class="hidden"></div>
 
 <!-- SHOOT BUTTON -->
 <button id="shoot-btn" aria-label="Disparar">
