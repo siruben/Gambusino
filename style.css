@@ -213,6 +213,51 @@ body {
   box-shadow: 0 0 22px rgba(255,215,0,0.35);
 }
 
+/* Shoot button */
+#shoot-btn {
+  position: fixed;
+  bottom: 22px;
+  right: 24px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 2px solid #7a6040;
+  background: rgba(0,0,0,0.85);
+  cursor: pointer;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s, box-shadow 0.15s, border-color 0.15s;
+}
+
+#shoot-btn svg {
+  width: 28px;
+  height: 28px;
+}
+
+#shoot-btn:active {
+  border-color: #FFD700;
+  background: rgba(184,134,11,0.3);
+  box-shadow: 0 0 22px rgba(255,215,0,0.5);
+}
+
+/* Bullets */
+.bullet {
+  position: fixed;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #FFD700;
+  box-shadow: 0 0 8px 2px rgba(255,215,0,0.9), 0 0 4px rgba(255,255,255,0.8);
+  z-index: 20;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
 /* Screens */
 .screen {
   position: fixed;

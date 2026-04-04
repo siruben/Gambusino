@@ -4,6 +4,7 @@
 const beam        = document.getElementById('beam');
 const darkness    = document.getElementById('darkness');
 const torchBtn    = document.getElementById('torch-btn');
+const shootBtn    = document.getElementById('shoot-btn');
 const scoreEl     = document.getElementById('score');
 const levelEl     = document.getElementById('level-display');
 const timerBar    = document.getElementById('timer-bar');
@@ -38,6 +39,9 @@ const NUGGET_MIN_DIST        = 150;  // minimum top-left to top-left distance be
 const NUGGET_MAX_ATTEMPTS    = 100;  // max retries to find a non-overlapping position
 const EXCELLENT_SCORE       = 10;    // score threshold for "excellent" end message
 const GOOD_SCORE            = 4;     // score threshold for "good" end message
+const BULLET_SPEED          = 12;    // bullet travel speed in pixels per frame
+const NUGGET_HALF           = Math.floor(NUGGET_SIZE / 2); // nugget center offset / collision radius (67px)
+const BEAM_APEX_Y_OFFSET    = 46;    // px from bottom of viewport to beam apex / torch button centre
 
 // --- Beam angle state ---
 let currentAngle   = 0;    // smoothly interpolated beam rotation angle (degrees)
@@ -48,6 +52,9 @@ let rafId          = null;
 
 // --- Nuggets ---
 let nuggets = [];
+
+// --- Bullets ---
+let bullets = [];
 
 // --- Torch toggle ---
 torchBtn.addEventListener('click', () => {
@@ -61,6 +68,9 @@ torchBtn.addEventListener('click', () => {
     bgMusic.pause();
   }
 });
+
+// --- Shoot button ---
+shootBtn.addEventListener('click', () => fireBullet());
 
 // --- Start / Restart ---
 document.getElementById('start-btn').addEventListener('click', async () => {
@@ -97,6 +107,7 @@ function startGame() {
   targetAngle    = 0;
 
   clearNuggets();
+  clearBullets();
   spawnNuggets(NUGGETS_START_COUNT);
   startTimer();
 
@@ -114,6 +125,7 @@ function endGame() {
 
   sweepStartTime = null;
   clearNuggets();
+  clearBullets();
   clearInterval(timerHandle);
   setDarkness();
 
@@ -199,15 +211,7 @@ function spawnNuggets(count) {
 
     n.addEventListener('click', () => {
       if ((parseFloat(n.style.opacity) || 0) <= 0) return;
-      n.style.opacity = '';
-      n.style.transform = '';
-      n.style.filter = '';
-      n.classList.add('caught');
-      score++;
-      scoreEl.textContent = score;
-      setTimeout(() => n.remove(), 300);
-      nuggets = nuggets.filter(x => x !== n);
-      if (nuggets.length === 0) nextLevel();
+      catchNugget(n);
     });
 
     cave.appendChild(n);
@@ -218,6 +222,68 @@ function spawnNuggets(count) {
 function clearNuggets() {
   nuggets.forEach(n => n.remove());
   nuggets = [];
+}
+
+function catchNugget(n) {
+  n.style.opacity = '';
+  n.style.transform = '';
+  n.style.filter = '';
+  n.classList.add('caught');
+  score++;
+  scoreEl.textContent = score;
+  setTimeout(() => n.remove(), 300);
+  nuggets = nuggets.filter(x => x !== n);
+  if (nuggets.length === 0) nextLevel();
+}
+
+function clearBullets() {
+  bullets.forEach(b => b.el.remove());
+  bullets = [];
+}
+
+function fireBullet() {
+  if (!gameActive || !torchOn) return;
+  const el = document.createElement('div');
+  el.className = 'bullet';
+  const apexX = window.innerWidth / 2;
+  const apexY = window.innerHeight - BEAM_APEX_Y_OFFSET;
+  el.style.left = apexX + 'px';
+  el.style.top  = apexY + 'px';
+  document.body.appendChild(el);
+  const rad = currentAngle * Math.PI / 180;
+  bullets.push({ x: apexX, y: apexY, vx: BULLET_SPEED * Math.sin(rad), vy: -BULLET_SPEED * Math.cos(rad), el });
+}
+
+function updateBullets() {
+  if (!bullets.length) return;
+  const W = window.innerWidth;
+  const H = window.innerHeight;
+  const surviving = [];
+  for (const b of bullets) {
+    b.x += b.vx;
+    b.y += b.vy;
+    if (b.x < 0 || b.x > W || b.y < 0 || b.y > H) {
+      b.el.remove();
+      continue;
+    }
+    b.el.style.left = b.x + 'px';
+    b.el.style.top  = b.y + 'px';
+    let hit = false;
+    for (let i = 0; i < nuggets.length; i++) {
+      const n = nuggets[i];
+      if (Math.hypot(b.x - (n.offsetLeft + NUGGET_HALF), b.y - (n.offsetTop + NUGGET_HALF)) < NUGGET_HALF) {
+        catchNugget(n);
+        hit = true;
+        break;
+      }
+    }
+    if (hit) {
+      b.el.remove();
+    } else {
+      surviving.push(b);
+    }
+  }
+  bullets = surviving;
 }
 
 function nextLevel() {
@@ -257,6 +323,8 @@ function rafLoop() {
     currentAngle += (sweepAngle - currentAngle) * LERP_FACTOR;
   }
 
+  updateBullets();
+
   if (!torchOn) return;
 
   updateBeamVisual();
@@ -274,14 +342,14 @@ function updateBeamVisual() {
 
 function checkLight() {
   const apexX     = window.innerWidth  / 2;
-  const apexY     = window.innerHeight - 46;
+  const apexY     = window.innerHeight - BEAM_APEX_Y_OFFSET;
   const halfW     = window.innerWidth  * BEAM_HALF_VW;
-  const beamH     = window.innerHeight - 46;
+  const beamH     = window.innerHeight - BEAM_APEX_Y_OFFSET;
   const halfAngle = Math.atan2(halfW, beamH) * (180 / Math.PI);
 
   nuggets.forEach(n => {
-    const nx = n.offsetLeft + 67;
-    const ny = n.offsetTop  + 67;
+    const nx = n.offsetLeft + NUGGET_HALF;
+    const ny = n.offsetTop  + NUGGET_HALF;
     const dx = nx - apexX;
     const dy = ny - apexY;
 
