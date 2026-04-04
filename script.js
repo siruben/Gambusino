@@ -18,7 +18,7 @@ const endDesc     = document.getElementById('end-desc');
 const bgMusic        = document.getElementById('bg-music');
 // New HUD refs
 const progressEl     = document.getElementById('progress-display');
-const missedEl       = document.getElementById('missed-display');
+const missedEl       = document.getElementById('escape-bar');
 const comboDisplayEl = document.getElementById('combo-display');
 const comboValueEl   = document.getElementById('combo-value');
 const powerupIndEl   = document.getElementById('powerup-indicator');
@@ -170,7 +170,9 @@ function startGame() {
 
   scoreEl.textContent = '0';
   levelEl.textContent = '1';
-  missedEl.textContent = '❌ 0/' + MAX_MISSED;
+  missedEl.style.height = '0%';
+  missedEl.style.backgroundColor = '#39ff14';
+  missedEl.setAttribute('aria-valuenow', '0');
 
   startScreen.classList.add('hidden');
   endScreen.classList.add('hidden');
@@ -515,10 +517,15 @@ function updateProgress() {
 }
 
 function updateMissedDisplay() {
-  missedEl.textContent = '❌ ' + missed + '/' + MAX_MISSED;
-  // Flash red when approaching limit
-  if (missed >= MAX_MISSED - 2) {
-    missedEl.style.color = '#ff1111';
+  const pct = MAX_MISSED > 0 ? (missed / MAX_MISSED) * 100 : 0;
+  missedEl.style.height = pct + '%';
+  missedEl.setAttribute('aria-valuenow', Math.round(pct));
+  if (pct >= 70) {
+    missedEl.style.backgroundColor = '#ff4444';
+  } else if (pct >= 45) {
+    missedEl.style.backgroundColor = '#FFD700';
+  } else {
+    missedEl.style.backgroundColor = '#39ff14';
   }
 }
 
