@@ -52,7 +52,12 @@ torchBtn.addEventListener('click', () => {
   torchOn = !torchOn;
   torchBtn.classList.toggle('on', torchOn);
   beam.classList.toggle('active', torchOn);
-  if (torchOn && !gyroEnabled) requestGyro();
+  if (torchOn) {
+    if (!gyroEnabled) requestGyro();
+    bgMusic.play().catch(() => {});
+  } else {
+    bgMusic.pause();
+  }
 });
 
 // --- Start / Restart ---
@@ -63,7 +68,7 @@ function startGame() {
   score  = 0;
   level  = 1;
   gameActive = true;
-  torchOn    = true;
+  torchOn    = false;
 
   scoreEl.textContent = '0';
   levelEl.textContent = '1';
@@ -71,8 +76,8 @@ function startGame() {
   startScreen.classList.add('hidden');
   endScreen.classList.add('hidden');
 
-  torchBtn.classList.add('on');
-  beam.classList.add('active');
+  torchBtn.classList.remove('on');
+  beam.classList.remove('active');
 
   // Reset gyro hint animation
   gyroHint.style.animation = 'none';
@@ -85,7 +90,6 @@ function startGame() {
   requestGyro();
 
   bgMusic.currentTime = 0;
-  bgMusic.play().catch(() => {});
 
   if (!rafId) rafLoop();
 }
@@ -123,6 +127,7 @@ function startTimer() {
   const TICK = 100;
   timerHandle = setInterval(() => {
     if (!gameActive) { clearInterval(timerHandle); return; }
+    if (!torchOn) return;
     timeLeft -= TICK;
 
     const pct = Math.max(0, timeLeft / LEVEL_DURATION);
