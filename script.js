@@ -42,6 +42,10 @@ const GOOD_SCORE            = 4;     // score threshold for "good" end message
 const BULLET_SPEED          = 12;    // bullet travel speed in pixels per frame
 const NUGGET_HALF           = Math.floor(NUGGET_SIZE / 2); // nugget center offset / collision radius (67px)
 const BEAM_APEX_Y_OFFSET    = 46;    // px from bottom of viewport to beam apex / torch button centre
+const MAX_LEVEL             = 30;    // total number of levels
+const NUGGET_SPEED_BASE     = 0.9;   // base downward speed in px/frame at level 1
+const NUGGET_SPEED_STEP     = 0.12;  // extra speed added per level
+const NUGGET_VX_RATIO       = 1.6;   // horizontal zigzag speed relative to vertical speed
 
 // --- Beam angle state ---
 let currentAngle   = 0;    // smoothly interpolated beam rotation angle (degrees)
@@ -171,60 +175,54 @@ function startTimer() {
 }
 
 // --- Nuggets ---
-function isTooClose(x, y, placed) {
-  return placed.some(p => Math.hypot(x - p.x, y - p.y) < NUGGET_MIN_DIST);
+// Each entry: { el, x, y, vx, vy }
+
+function getLevelSpeed() {
+  return NUGGET_SPEED_BASE + (level - 1) * NUGGET_SPEED_STEP;
 }
 
 function spawnNuggets(count) {
   clearNuggets();
   const cave   = document.getElementById('nuggets-container');
-  const margin = 60;
-  const W = window.innerWidth;
-  const H = window.innerHeight;
-  const maxX = W - 2 * margin - NUGGET_SIZE;
-  const maxY = H * NUGGET_SPAWN_AREA - margin - NUGGET_SIZE;
-  const placed = []; // top-left corner coordinates of placed nuggets
+  const margin = 20;
+  const W      = window.innerWidth;
+  const speed  = getLevelSpeed();
 
   for (let i = 0; i < count; i++) {
-    let x, y, retryCount = 0;
-    // Retry until a position is far enough from all placed nuggets
-    do {
-      x = margin + Math.random() * maxX;
-      y = margin + Math.random() * maxY;
-      retryCount++;
-    } while (
-      retryCount < NUGGET_MAX_ATTEMPTS &&
-      isTooClose(x, y, placed)
-    );
+    const x  = margin + Math.random() * (W - 2 * margin - NUGGET_SIZE);
+    // Start just above the screen, staggered so they don't all arrive at once
+    const y  = -(NUGGET_SIZE + Math.random() * NUGGET_SIZE * 2);
 
-    // If retries were exhausted and still overlapping, skip this nugget
-    if (retryCount >= NUGGET_MAX_ATTEMPTS && isTooClose(x, y, placed)) {
-      continue;
-    }
-    placed.push({ x, y });
+    const el = document.createElement('div');
+    el.className = 'nugget';
+    el.style.left = x + 'px';
+    el.style.top  = y + 'px';
+    cave.appendChild(el);
 
-    const n = document.createElement('div');
-    n.className = 'nugget';
-    n.style.left = x + 'px';
-    // Spawn in upper two thirds of screen (below that is close to the torch apex and unreachable)
-    n.style.top  = y + 'px';
+    const obj = {
+      el,
+      x,
+      y,
+      vx: (Math.random() < 0.5 ? 1 : -1) * speed * NUGGET_VX_RATIO,
+      vy: speed
+    };
 
-    n.addEventListener('click', () => {
-      if ((parseFloat(n.style.opacity) || 0) <= 0) return;
-      catchNugget(n);
+    el.addEventListener('click', () => {
+      if ((parseFloat(el.style.opacity) || 0) <= 0) return;
+      catchNugget(obj);
     });
 
-    cave.appendChild(n);
-    nuggets.push(n);
+    nuggets.push(obj);
   }
 }
 
 function clearNuggets() {
-  nuggets.forEach(n => n.remove());
+  nuggets.forEach(obj => obj.el.remove());
   nuggets = [];
 }
 
-function catchNugget(n) {
+function catchNugget(obj) {
+  const n = obj.el;
   n.style.opacity = '';
   n.style.transform = '';
   n.style.filter = '';
@@ -232,8 +230,46 @@ function catchNugget(n) {
   score++;
   scoreEl.textContent = score;
   setTimeout(() => n.remove(), 300);
-  nuggets = nuggets.filter(x => x !== n);
+  nuggets = nuggets.filter(o => o !== obj);
   if (nuggets.length === 0) nextLevel();
+}
+
+function updateNuggets() {
+  if (!nuggets.length) return;
+  const W = window.innerWidth;
+  const H = window.innerHeight;
+  const surviving = [];
+
+  for (const obj of nuggets) {
+    obj.x += obj.vx;
+    obj.y += obj.vy;
+
+    // Bounce off left/right walls
+    if (obj.x < 0) {
+      obj.x = 0;
+      obj.vx = Math.abs(obj.vx);
+    } else if (obj.x > W - NUGGET_SIZE) {
+      obj.x = W - NUGGET_SIZE;
+      obj.vx = -Math.abs(obj.vx);
+    }
+
+    obj.el.style.left = obj.x + 'px';
+    obj.el.style.top  = obj.y + 'px';
+
+    // Disappear when reaching the bottom of the screen
+    if (obj.y > H) {
+      obj.el.remove();
+      continue;
+    }
+
+    surviving.push(obj);
+  }
+
+  const prevLength = nuggets.length;
+  nuggets = surviving;
+
+  // If all gambusinos are gone (caught or escaped), advance to next level
+  if (nuggets.length === 0 && prevLength > 0) nextLevel();
 }
 
 function clearBullets() {
@@ -270,9 +306,9 @@ function updateBullets() {
     b.el.style.top  = b.y + 'px';
     let hit = false;
     for (let i = 0; i < nuggets.length; i++) {
-      const n = nuggets[i];
-      if (Math.hypot(b.x - (n.offsetLeft + NUGGET_HALF), b.y - (n.offsetTop + NUGGET_HALF)) < NUGGET_HALF) {
-        catchNugget(n);
+      const obj = nuggets[i];
+      if (Math.hypot(b.x - (obj.x + NUGGET_HALF), b.y - (obj.y + NUGGET_HALF)) < NUGGET_HALF) {
+        catchNugget(obj);
         hit = true;
         break;
       }
@@ -288,6 +324,12 @@ function updateBullets() {
 
 function nextLevel() {
   level++;
+
+  if (level > MAX_LEVEL) {
+    winGame();
+    return;
+  }
+
   levelEl.textContent = level;
   timeLeft = LEVEL_DURATION;
   timerBar.style.width = '100%';
@@ -302,6 +344,28 @@ function nextLevel() {
   setTimeout(() => levelMsg.classList.add('hidden'), 2000);
 
   spawnNuggets(count);
+}
+
+function winGame() {
+  gameActive = false;
+  torchOn    = false;
+  torchBtn.classList.remove('on');
+  beam.classList.remove('active');
+
+  sweepStartTime = null;
+  clearNuggets();
+  clearBullets();
+  clearInterval(timerHandle);
+  setDarkness();
+
+  bgMusic.pause();
+  bgMusic.currentTime = 0;
+
+  endTitle.textContent = '🏆 Lendário!';
+  endSub.textContent   = 'Conquistaste a Mina Perdida!';
+  endDesc.textContent  = `Apanhaste ${score} gambusino${score !== 1 ? 's' : ''} e completaste todos os ${MAX_LEVEL} níveis. A mina é tua!`;
+
+  endScreen.classList.remove('hidden');
 }
 
 // --- rAF animation loop ---
@@ -324,6 +388,7 @@ function rafLoop() {
   }
 
   updateBullets();
+  updateNuggets();
 
   if (!torchOn) return;
 
@@ -347,9 +412,10 @@ function checkLight() {
   const beamH     = window.innerHeight - BEAM_APEX_Y_OFFSET;
   const halfAngle = Math.atan2(halfW, beamH) * (180 / Math.PI);
 
-  nuggets.forEach(n => {
-    const nx = n.offsetLeft + NUGGET_HALF;
-    const ny = n.offsetTop  + NUGGET_HALF;
+  nuggets.forEach(obj => {
+    const n  = obj.el;
+    const nx = obj.x + NUGGET_HALF;
+    const ny = obj.y + NUGGET_HALF;
     const dx = nx - apexX;
     const dy = ny - apexY;
 
