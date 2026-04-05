@@ -8,6 +8,8 @@
 <link rel="stylesheet" href="style.css">
 <meta name="theme-color" content="#000000">
 <link rel="icon" href="assets/icon.png">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="assets/icon-192.png">
 </head>
 
 <body>
@@ -132,5 +134,10 @@
 <audio id="bg-music" src="Gambusinos.mp3" loop></audio>
 <audio id="intro-music" src="Gamb-orig.mp3" loop></audio>
 <script src="script.js"></script>
+<script>
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("./sw.js");
+  }
+</script>
 </body>
 </html>
