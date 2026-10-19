@@ -1,91 +1,61 @@
 'use strict';
 
-// --- DOM refs ---
+// ============================================================
+// DOM refs
+// ============================================================
 const beam        = document.getElementById('beam');
 const darkness    = document.getElementById('darkness');
 const torchBtn    = document.getElementById('torch-btn');
 const shootBtn    = document.getElementById('shoot-btn');
+const pauseBtn    = document.getElementById('pause-btn');
 const scoreEl     = document.getElementById('score');
 const levelEl     = document.getElementById('level-display');
 const timerBar    = document.getElementById('timer-bar');
 const gyroHint    = document.getElementById('gyro-hint');
+const levelMsg    = document.getElementById('level-msg');
 const startScreen = document.getElementById('start-screen');
 const endScreen   = document.getElementById('end-screen');
+const pauseScreen = document.getElementById('pause-screen');
 const endTitle    = document.getElementById('end-title');
 const endSub      = document.getElementById('end-sub');
 const endDesc     = document.getElementById('end-desc');
+const recordStartEl = document.getElementById('record-start');
+const recordEndEl   = document.getElementById('record-end');
 
 const bgMusic        = document.getElementById('bg-music');
 const introMusic     = document.getElementById('intro-music');
-// New HUD refs
 const progressEl     = document.getElementById('progress-display');
 const missedEl       = document.getElementById('escape-bar');
 const comboDisplayEl = document.getElementById('combo-display');
 const comboValueEl   = document.getElementById('combo-value');
 const powerupIndEl   = document.getElementById('powerup-indicator');
 
-// --- Creator screen ---
-document.getElementById('creator-continue-btn').addEventListener('click', () => {
-  document.getElementById('creator-screen').classList.add('hidden');
-  document.getElementById('start-screen').classList.remove('hidden');
-  introMusic.currentTime = 0;
-  introMusic.play().catch(() => {});
-});
-
-// --- Game state ---
-let torchOn    = false;
-let gameActive = false;
-let score      = 0;
-let level      = 1;
-let timerHandle = null; // kept for legacy clearInterval safety
-let timeLeft   = 0;     // unused — level progression is now kill-count based
-
-// --- New gameplay state ---
-let missed          = 0;     // gambusinos that escaped this run
-let levelKills      = 0;     // kills in current level
-let levelTarget     = 0;     // kills needed to complete current level
-let levelTransitioning = false;
-let combo           = 0;     // consecutive kills within COMBO_TIMEOUT
-let comboMultiplier = 1;     // current score multiplier
-let comboTimerId    = null;  // timeout handle for combo reset
-let lastShotTime    = 0;     // timestamp of last successful shot
-let shootCooldown   = 400;   // ms between allowed shots (varies per level)
-let activePowerUp   = null;  // { type, endTime } — currently active power-up
-let spawnTimer      = null;  // interval handle for continuous nugget spawning
-let spawnedCount    = 0;     // nuggets spawned this level
-let levelSpawnTotal = 0;     // total nuggets to spawn this level (for stuck detection)
-let powerUpTimerId    = null;
-let powerUpSpawnTimer = null;
-
-// --- Particles state (hit effects) ---
-let particles = [];
-
 // ============================================================
 // GAMEPLAY TUNING — easy-to-adjust constants
 // ============================================================
-const LEVEL_DURATION        = 30000; // ms (legacy, kept for safety)
+const FRAME_MS              = 1000 / 60; // reference frame: all "px/frame" values are tuned for 60 Hz
+const MAX_DT                = 34;    // ms — longest frame we simulate (avoids tunnelling after a hiccup)
+
 const BEAM_SWEEP_PERIOD     = 3500;  // ms — duration of one full left-right-left sweep cycle
 const MAX_SWEEP_ANGLE       = 65;    // degrees — max auto-sweep angle (no gyro)
 const MAX_GYRO_ANGLE        = 75;    // degrees — gyroscope gamma clamp
-const LERP_FACTOR           = 0.12;  // beam angle smoothing
+const LERP_FACTOR           = 0.12;  // beam angle smoothing (per 60 Hz frame)
 const BEAM_HALF_VW          = 0.25;  // half-width of beam (matches CSS left:-25vw)
-const NUGGET_SIZE            = 101;  // normal gambusino size (px)
-const RARE_SIZE              = 120;  // rare gambusino size (px)
-const NUGGET_HALF            = Math.floor(NUGGET_SIZE / 2);
-const NUGGET_MIN_DIST        = 150;  // min spawn distance between nuggets
-const NUGGET_MAX_ATTEMPTS    = 100;  // max placement retries
-const EXCELLENT_SCORE       = 200;   // score for "excelente" message
-const GOOD_SCORE            = 80;    // score for "bom" message
-const BULLET_SPEED          = 12;    // px per frame
+const NUGGET_SIZE           = 101;   // normal gambusino size (px)
+const RARE_SIZE             = 120;   // rare gambusino size (px)
+const BULLET_SPEED          = 12;    // px per 60 Hz frame
 const BEAM_APEX_Y_OFFSET    = 46;    // px from bottom to torch centre
 const MAX_LEVELS            = 30;    // total levels
+
+// Tapping a lit gambusino kills it directly (no shot, no cooldown).
+// Off by default so the shoot button, cooldown and power-ups actually matter.
+const TAP_TO_KILL           = false;
 
 // Movement base values (progressively increase per level)
 const NUGGET_BASE_SPEED     = 0.6;   // px/frame at level 1
 const NUGGET_SPEED_STEP     = 0.07;  // extra px/frame per level
 const NUGGET_ZIG_SPEED      = 1.5;   // horizontal zig-zag px/frame at level 1
 const NUGGET_ZIG_STEP       = 0.04;  // extra zig-zag speed per level
-const NUGGET_SPAWN_STAGGER  = 120;   // legacy (unused in new spawn system)
 
 // Rare gambusino
 const RARE_CHANCE    = 0.05;  // base probability of rare spawn (5%)
@@ -103,43 +73,126 @@ const COMBO_TIMEOUT = 3000;  // ms window between kills to maintain combo
 // Power-ups
 const POWERUP_DURATION        = 5000;   // ms each power-up lasts
 const POWERUP_SPAWN_INTERVAL  = 25000;  // ms between power-up spawns
-// Power-up pickup lifetime: auto-removed if player doesn't collect it in time
-// Intentionally shorter than POWERUP_SPAWN_INTERVAL so the screen stays uncluttered
-const POWERUP_PICKUP_LIFETIME = 8000;   // ms
+const POWERUP_PICKUP_LIFETIME = 8000;   // ms the pickup stays on screen if not collected
 
-// Level 30 boss: everything maxed out
-const BOSS_SPEED_MULTIPLIER   = 3.5;   // speed multiplier vs base
+// Level 30 boss. The fastest regular level (28) falls at ~3.6 px/frame,
+// so the boss (0.6 * 7 = 4.2) is genuinely the fastest thing in the game.
+const BOSS_SPEED_MULTIPLIER   = 7;     // speed multiplier vs base
 const BOSS_ZIG_MULTIPLIER     = 3.0;   // zig-zag multiplier vs base
 const BOSS_TARGET             = 40;    // kills required to beat the boss level
 const BOSS_SPAWN_INTERVAL     = 350;   // ms between spawns
 
-// Game-over condition
-const MAX_MISSED = 7;  // escaped gambusinos allowed before game over
+// Game-over condition: gambusinos allowed to escape *within one level*.
+// The counter resets at the start of every level.
+const MAX_MISSED = 7;
 
-// [CREEPY] Jelly bounce constants
+// Level transition banner
+const LEVEL_TRANSITION_MS = 2200;
+
+// Jelly bounce constants
 const BOUNCE_PERIOD_MS   = 190;   // ms per bounce oscillation cycle
 const BOUNCE_Y_AMPLITUDE = 0.07;  // vertical stretch factor (squash-stretch)
 const BOUNCE_X_AMPLITUDE = 0.04;  // horizontal squash factor
 
-// [CREEPY] Particle constants
-const PARTICLE_GRAVITY   = 0.18;  // downward acceleration per frame for hit particles
+// Particle constants
+const PARTICLE_GRAVITY   = 0.18;  // downward acceleration per 60 Hz frame
+const TRAIL_INTERVAL_MS  = 32;    // ms between bullet trail dots
+
+// Persistence
+const RECORD_KEY = 'gambusino.record.v1';
+
+// ============================================================
+// Game state
+// ============================================================
+let torchOn    = false;
+let gameActive = false;
+let paused     = false;
+let score      = 0;
+let level      = 1;
+
+let missed          = 0;     // gambusinos that escaped in the current level
+let levelKills      = 0;     // kills in current level
+let levelTarget     = 0;     // kills needed to complete current level
+let levelTransitioning = false;
+let transitionLeft  = 0;     // ms left of the "Nível N" banner
+let combo           = 0;     // consecutive kills within COMBO_TIMEOUT
+let comboMultiplier = 1;     // current score multiplier
+let comboLeft       = 0;     // ms left before the combo resets
+let lastShotTime    = 0;     // timestamp of last successful shot
+let shootCooldown   = 400;   // ms between allowed shots (varies per level)
+let activePowerUp   = null;  // { type, left } — currently active power-up
+let pickup          = null;  // { el, type, left } — power-up waiting to be collected
+let powerUpSpawnClock = POWERUP_SPAWN_INTERVAL;
+
+let levelConfig     = null;  // config of the level being played
+let spawnClock      = 0;     // ms until the next gambusino spawns
+let spawnedCount    = 0;     // nuggets spawned this level
+let levelSpawnTotal = 0;     // total nuggets to spawn this level (for stuck detection)
+
+let particles = [];
+let nuggets   = [];
+let bullets   = [];
 
 // --- Beam angle state ---
 let currentAngle   = 0;    // smoothly interpolated beam rotation angle (degrees)
 let targetAngle    = 0;    // target angle (from gyro or auto-sweep)
 let hasGyro        = false; // whether a gyroscope is providing data
-let sweepStartTime = null;
+let sweepClock     = 0;    // ms into the auto-sweep cycle
 let rafId          = null;
+let lastFrame      = performance.now();
 
-// --- Nuggets ---
-let nuggets = [];
+// All game clocks (spawns, combo, power-ups, banners) advance from the frame
+// delta inside rafLoop, never from setTimeout/setInterval. That makes pausing,
+// backgrounding the app and switching the torch off consistent: when the
+// simulation does not run, nothing in the game advances.
 
-// --- Bullets ---
-let bullets = [];
+function vibrate(pattern) {
+  try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) { /* unsupported */ }
+}
 
-// --- Torch toggle ---
+const hasPowerUp = (type) => activePowerUp !== null && activePowerUp.type === type;
+
+// ============================================================
+// Records (localStorage)
+// ============================================================
+function loadRecord() {
+  try {
+    const r = JSON.parse(localStorage.getItem(RECORD_KEY) || '{}');
+    return { score: r.score | 0, level: r.level | 0 };
+  } catch (e) {
+    return { score: 0, level: 0 };
+  }
+}
+
+// Saves the run if it beats the stored record. Returns true on a new score record.
+function saveRecord() {
+  const prev = loadRecord();
+  const next = { score: Math.max(prev.score, score), level: Math.max(prev.level, level) };
+  try { localStorage.setItem(RECORD_KEY, JSON.stringify(next)); } catch (e) { /* storage unavailable */ }
+  return score > prev.score;
+}
+
+function recordLabel() {
+  const r = loadRecord();
+  return r.score > 0 ? `🏆 Recorde: ${r.score} pts · Nível ${Math.max(r.level, 1)}` : '';
+}
+
+function updateRecordTexts() {
+  recordStartEl.textContent = recordLabel();
+}
+
+// ============================================================
+// Screens and buttons
+// ============================================================
+document.getElementById('creator-continue-btn').addEventListener('click', () => {
+  document.getElementById('creator-screen').classList.add('hidden');
+  startScreen.classList.remove('hidden');
+  introMusic.currentTime = 0;
+  introMusic.play().catch(() => {});
+});
+
 torchBtn.addEventListener('click', () => {
-  if (!gameActive) return;
+  if (!gameActive || paused) return;
   torchOn = !torchOn;
   torchBtn.classList.toggle('on', torchOn);
   beam.classList.toggle('active', torchOn);
@@ -151,10 +204,11 @@ torchBtn.addEventListener('click', () => {
   }
 });
 
-// --- Shoot button ---
 shootBtn.addEventListener('click', () => fireBullet());
+pauseBtn.addEventListener('click', () => pauseGame());
+document.getElementById('resume-btn').addEventListener('click', () => resumeGame());
+document.getElementById('quit-btn').addEventListener('click', () => quitToMenu());
 
-// --- Start / Restart ---
 document.getElementById('start-btn').addEventListener('click', async () => {
   await requestGyroPermission();
   startGame();
@@ -164,121 +218,161 @@ document.getElementById('restart-btn').addEventListener('click', async () => {
   startGame();
 });
 
+// ============================================================
+// Pause / background handling
+// ============================================================
+function pauseGame() {
+  if (!gameActive || paused) return;
+  paused = true;
+  pauseScreen.classList.remove('hidden');
+  bgMusic.pause();
+}
+
+function resumeGame() {
+  if (!paused) return;
+  paused = false;
+  pauseScreen.classList.add('hidden');
+  lastFrame = performance.now();
+  if (torchOn) bgMusic.play().catch(() => {});
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    introMusic.pause();
+    pauseGame();
+  } else if (!startScreen.classList.contains('hidden')) {
+    introMusic.play().catch(() => {});
+  }
+});
+
+function quitToMenu() {
+  cleanupRun();
+  pauseScreen.classList.add('hidden');
+  endScreen.classList.add('hidden');
+  updateRecordTexts();
+  startScreen.classList.remove('hidden');
+  introMusic.currentTime = 0;
+  introMusic.play().catch(() => {});
+}
+
+// ============================================================
+// Start / end
+// ============================================================
 function startGame() {
-  // Reset core state
   score      = 0;
   level      = 1;
-  missed     = 0;
-  levelKills = 0;
   combo      = 0;
-  comboMultiplier   = 1;
+  comboLeft  = 0;
+  comboMultiplier    = 1;
   levelTransitioning = false;
-  activePowerUp     = null;
-  lastShotTime      = 0;
+  transitionLeft     = 0;
+  activePowerUp      = null;
+  lastShotTime       = 0;
+  powerUpSpawnClock  = POWERUP_SPAWN_INTERVAL;
   gameActive = true;
+  paused     = false;
   torchOn    = false;
 
   scoreEl.textContent = '0';
   levelEl.textContent = '1';
-  missedEl.style.width = '0%';
   missedEl.style.backgroundColor = '#39ff14';
-  missedEl.setAttribute('aria-valuenow', '0');
 
   startScreen.classList.add('hidden');
   endScreen.classList.add('hidden');
+  pauseScreen.classList.add('hidden');
+  levelMsg.classList.add('hidden');
   comboDisplayEl.classList.add('hidden');
   powerupIndEl.classList.add('hidden');
-  document.querySelectorAll('.powerup-pickup').forEach(el => el.remove());
+  removePickup();
 
   torchBtn.classList.remove('on');
   beam.classList.remove('active');
 
-  // Reset hint — show blinking until torch is turned on
+  // Show the blinking hint until the torch is turned on
   gyroHint.classList.remove('hidden');
   gyroHint.style.animation = 'none';
   void gyroHint.offsetHeight;
   gyroHint.style.animation = 'blinkHint 1s ease-in-out infinite';
 
-  sweepStartTime = null;
-  currentAngle   = 0;
-  targetAngle    = 0;
+  sweepClock   = 0;
+  currentAngle = 0;
+  targetAngle  = 0;
 
   clearNuggets();
   clearBullets();
   clearParticles();
-  clearTimeout(comboTimerId);
-  clearTimeout(powerUpTimerId);
-  clearInterval(spawnTimer);
-  clearInterval(powerUpSpawnTimer);
 
-  // Initialise first level
-  const config = getLevelConfig(1);
-  shootCooldown = config.cooldown;
-  levelTarget   = config.target;
-  updateProgress();
-  timerBar.style.background = 'linear-gradient(to right, #39ff14, #FFD700)';
-  timerBar.style.width = '0%';
-
-  startLevelSpawning(config);
-  startPowerUpSpawning();
+  beginLevel();
 
   introMusic.pause();
   introMusic.currentTime = 0;
 
+  lastFrame = performance.now();
   if (!rafId) rafLoop();
 }
 
-function endGame(reason) {
-  if (!gameActive) return; // guard against double-call
+// Stops everything that belongs to a run (shared by game over, victory and quit).
+function cleanupRun() {
   gameActive = false;
+  paused     = false;
   torchOn    = false;
   torchBtn.classList.remove('on');
   beam.classList.remove('active');
 
-  clearInterval(spawnTimer);
-  clearInterval(powerUpSpawnTimer);
-  clearInterval(timerHandle); // legacy safety
-  clearTimeout(powerUpTimerId);
-  clearTimeout(comboTimerId);
   clearNuggets();
   clearBullets();
   clearParticles();
-  setDarkness();
-  document.querySelectorAll('.powerup-pickup').forEach(el => el.remove());
+  removePickup();
+  activePowerUp = null;
+  levelMsg.classList.add('hidden');
   comboDisplayEl.classList.add('hidden');
   powerupIndEl.classList.add('hidden');
+  gyroHint.classList.add('hidden');
+  setDarkness();
 
   bgMusic.pause();
   bgMusic.currentTime = 0;
+}
+
+function endGame(reason) {
+  if (!gameActive) return; // guard against double-call
+  cleanupRun();
+
+  const isNewRecord = saveRecord();
 
   if (reason === 'miss') {
-    // Game over — too many escaped
     endTitle.innerHTML = '👁️ Game Over!';
-    endTitle.classList.add('creepy-shake');
-    endTitle.classList.remove('creepy-glow');
     endSub.textContent  = 'Os gambusinos escaparam!';
     endDesc.textContent =
-      `${missed} gambusinos fugiram pela mina escura…\nApanhaste ${score} pontos até ao nível ${level}.`;
-  } else if (reason === 'level_failed') {
-    // Game over — level target not reached before spawns exhausted
+      `${missed} gambusinos fugiram pela mina escura no nível ${level}…\nApanhaste ${score} pontos.`;
+  } else {
     endTitle.innerHTML = '💀 Nível Falhado!';
-    endTitle.classList.add('creepy-shake');
-    endTitle.classList.remove('creepy-glow');
     endSub.textContent  = 'Não apanhaste gambusinos suficientes!';
     endDesc.textContent =
       `Apanhaste ${levelKills} de ${levelTarget} gambusinos no nível ${level}.\nTotal: ${score} pontos.`;
-  } else {
-    // Generic end (shouldn't normally be reached in kill-count mode)
-    const msg = score > EXCELLENT_SCORE ? 'Excelente trabalho!'
-              : score > GOOD_SCORE      ? 'Bom esforço!'
-              : 'A mina guarda os seus segredos…';
-    endTitle.textContent = 'Fim da Jornada';
-    endTitle.classList.remove('creepy-shake', 'creepy-glow');
-    endSub.textContent   = 'Até ao próximo confronto';
-    endDesc.textContent  =
-      `Apanhaste ${score} pontos até ao nível ${level}. ${msg}`;
   }
+  endTitle.classList.add('creepy-shake');
+  endTitle.classList.remove('creepy-glow');
 
+  recordEndEl.textContent = isNewRecord ? '🏆 Novo recorde!' : recordLabel();
+  endScreen.classList.remove('hidden');
+}
+
+function showVictory() {
+  if (!gameActive) return;
+  cleanupRun();
+
+  const isNewRecord = saveRecord();
+
+  endTitle.innerHTML = 'Apanhaste todos os gambusinos… 👁️';
+  endTitle.classList.add('creepy-shake', 'creepy-glow');
+  endSub.textContent  = 'ou será que não?';
+  endDesc.innerHTML   =
+    `<strong>${score}</strong> pontos capturados… por enquanto.<br>` +
+    `<em style="font-size:0.85em;color:#888;display:block;margin-top:10px">` +
+    `Apanhaste todos os gambusinos... ou será que não? 👁️<br>A mina nunca esquece.</em>`;
+
+  recordEndEl.textContent = isNewRecord ? '🏆 Novo recorde!' : recordLabel();
   endScreen.classList.remove('hidden');
 }
 
@@ -292,26 +386,23 @@ function getLevelConfig(lvl) {
   //   mod 2 → normal baseline
   const pattern = lvl % 3;
 
-  let speed        = NUGGET_BASE_SPEED + (lvl - 1) * NUGGET_SPEED_STEP;
-  let zigSpeed     = NUGGET_ZIG_SPEED  + (lvl - 1) * NUGGET_ZIG_STEP;
-  let target       = 5 + Math.floor(lvl * 1.5);
+  let speed         = NUGGET_BASE_SPEED + (lvl - 1) * NUGGET_SPEED_STEP;
+  let zigSpeed      = NUGGET_ZIG_SPEED  + (lvl - 1) * NUGGET_ZIG_STEP;
+  let target        = 5 + Math.floor(lvl * 1.5);
   let spawnInterval = Math.max(600, 2500 - lvl * 55);
 
   if (pattern === 0) {
-    // Slow + many: more targets, faster spawning, gentler movement
     speed         *= 0.65;
     zigSpeed      *= 0.8;
     target         = Math.floor(target * 1.4);
     spawnInterval  = Math.max(400, Math.floor(spawnInterval * 0.75));
   } else if (pattern === 1) {
-    // Fast + few: fewer but very aggressive
     speed         *= 1.45;
     zigSpeed      *= 1.35;
     target         = Math.max(5, Math.ceil(target * 0.65));
     spawnInterval  = Math.round(spawnInterval * 1.4);
   }
 
-  // Level 30 boss: everything maxed out
   if (lvl === MAX_LEVELS) {
     speed         = NUGGET_BASE_SPEED * BOSS_SPEED_MULTIPLIER;
     zigSpeed      = NUGGET_ZIG_SPEED  * BOSS_ZIG_MULTIPLIER;
@@ -330,27 +421,33 @@ function getLevelConfig(lvl) {
   return { speed, zigSpeed, target, spawnInterval, rareChance, cooldown };
 }
 
+// Sets up the current `level` (already assigned) and resets per-level counters.
+function beginLevel() {
+  levelEl.textContent = level;
+  levelKills = 0;
+  missed     = 0;
+  updateMissedDisplay();
+
+  levelConfig   = getLevelConfig(level);
+  shootCooldown = levelConfig.cooldown;
+  levelTarget   = levelConfig.target;
+  updateProgress();
+
+  startLevelSpawning(levelConfig);
+}
+
 // ============================================================
-// CONTINUOUS SPAWN SYSTEM
+// SPAWN SYSTEM (driven by the frame clock, see tickClocks)
 // ============================================================
 function startLevelSpawning(config) {
-  clearInterval(spawnTimer);
-  spawnedCount = 0;
-  // Spawn 50% extra beyond the kill target so there are always targets available
-  // and to account for gambusinos that escape without being killed
-  const totalToSpawn = config.target + Math.ceil(config.target * 0.5);
-  levelSpawnTotal = totalToSpawn;
+  // Spawn 50% extra beyond the kill target so there are always targets
+  // available and to account for gambusinos that escape
+  levelSpawnTotal = config.target + Math.ceil(config.target * 0.5);
 
   // First gambusino appears immediately
   spawnOneNugget(config);
-  spawnedCount++;
-
-  spawnTimer = setInterval(() => {
-    if (!gameActive || levelTransitioning) return;
-    if (spawnedCount >= totalToSpawn) { clearInterval(spawnTimer); return; }
-    spawnOneNugget(config);
-    spawnedCount++;
-  }, config.spawnInterval);
+  spawnedCount = 1;
+  spawnClock   = config.spawnInterval;
 }
 
 function spawnOneNugget(config) {
@@ -359,7 +456,7 @@ function spawnOneNugget(config) {
   const half    = Math.floor(size / 2);
   const W       = window.innerWidth;
   const margin  = 60;
-  const x       = margin + Math.random() * (W - 2 * margin - size);
+  const x       = margin + Math.random() * Math.max(0, W - 2 * margin - size);
   const y       = -size;
   const dir     = Math.random() > 0.5 ? 1 : -1;
 
@@ -381,10 +478,49 @@ function spawnOneNugget(config) {
   };
   nuggets.push(nd);
 
-  el.addEventListener('click', () => {
-    if ((parseFloat(el.style.opacity) || 0) <= 0) return;
-    hitNugget(nd);
-  });
+  if (TAP_TO_KILL) {
+    el.addEventListener('click', () => {
+      if (!gameActive || paused) return;
+      if ((parseFloat(el.style.opacity) || 0) <= 0) return;
+      hitNugget(nd);
+    });
+  }
+}
+
+// Advances spawns, combo, power-ups. Only runs while the world is running.
+function tickClocks(dt) {
+  if (spawnedCount < levelSpawnTotal) {
+    spawnClock -= dt;
+    if (spawnClock <= 0) {
+      spawnOneNugget(levelConfig);
+      spawnedCount++;
+      spawnClock += levelConfig.spawnInterval;
+    }
+  }
+
+  if (combo > 0) {
+    comboLeft -= dt;
+    if (comboLeft <= 0) resetCombo();
+  }
+
+  if (activePowerUp) {
+    activePowerUp.left -= dt;
+    if (activePowerUp.left <= 0) {
+      activePowerUp = null;
+      powerupIndEl.classList.add('hidden');
+    }
+  }
+
+  if (pickup) {
+    pickup.left -= dt;
+    if (pickup.left <= 0) removePickup();
+  }
+
+  powerUpSpawnClock -= dt;
+  if (powerUpSpawnClock <= 0) {
+    powerUpSpawnClock += POWERUP_SPAWN_INTERVAL;
+    spawnPowerUp();
+  }
 }
 
 // ============================================================
@@ -393,7 +529,6 @@ function spawnOneNugget(config) {
 function transitionToNextLevel() {
   if (levelTransitioning) return;
   levelTransitioning = true;
-  clearInterval(spawnTimer);
   clearNuggets();
 
   if (level >= MAX_LEVELS) {
@@ -404,7 +539,6 @@ function transitionToNextLevel() {
   level++;
   levelEl.textContent = level;
 
-  const levelMsg = document.getElementById('level-msg');
   if (level === MAX_LEVELS) {
     levelMsg.innerHTML =
       '⚠️ NÍVEL FINAL ⚠️<br><span class="level-msg-sub">Que comecem os jogos…</span>';
@@ -415,19 +549,15 @@ function transitionToNextLevel() {
   levelMsg.style.animation = 'none';
   void levelMsg.offsetHeight;
   levelMsg.style.animation = 'levelMsgAnim 2s ease forwards';
-  setTimeout(() => levelMsg.classList.add('hidden'), 2000);
 
-  setTimeout(() => {
-    if (!gameActive) return;
-    levelKills         = 0;
-    levelTransitioning = false;
-    const config = getLevelConfig(level);
-    shootCooldown = config.cooldown;
-    levelTarget   = config.target;
-    updateProgress();
-    timerBar.style.width = '0%';
-    startLevelSpawning(config);
-  }, 2200);
+  transitionLeft = LEVEL_TRANSITION_MS;
+}
+
+function finishTransition() {
+  levelMsg.classList.add('hidden');
+  levelTransitioning = false;
+  timerBar.style.width = '0%';
+  beginLevel();
 }
 
 // ============================================================
@@ -443,18 +573,16 @@ function hitNugget(nd) {
 }
 
 function killNugget(nd) {
-  // Update combo and calculate points
   updateCombo();
   const basePoints   = nd.isRare ? RARE_POINTS : NORMAL_POINTS;
   const earnedPoints = basePoints * comboMultiplier;
   score += earnedPoints;
   scoreEl.textContent = score;
 
-  // Level progress
   levelKills++;
   updateProgress();
+  vibrate(nd.isRare ? [20, 30, 30] : 15);
 
-  // Particles
   if (nd.isRare) {
     createRareParticles(nd.x + nd.half, nd.y + nd.half);
   } else {
@@ -469,7 +597,6 @@ function killNugget(nd) {
   setTimeout(() => nd.el.remove(), 450);
   nuggets = nuggets.filter(n => n !== nd);
 
-  // Level complete?
   if (levelKills >= levelTarget && !levelTransitioning) {
     transitionToNextLevel();
   } else {
@@ -478,7 +605,6 @@ function killNugget(nd) {
 }
 
 function damageFeedback(nd) {
-  // Visual flash
   nd.el.classList.remove('hit-flash');
   void nd.el.offsetHeight;
   nd.el.classList.add('hit-flash');
@@ -494,17 +620,16 @@ function damageFeedback(nd) {
 // COMBO SYSTEM
 // ============================================================
 function updateCombo() {
-  clearTimeout(comboTimerId);
   combo++;
-  // Combo multiplier progression: every 2 consecutive kills adds +1x (capped at x5)
+  comboLeft = COMBO_TIMEOUT;
   // 1 kill = x1, 2 kills = x2, 4 kills = x3, 6 kills = x4, 8+ kills = x5
   comboMultiplier = Math.min(5, 1 + Math.floor(combo / 2));
   showComboDisplay();
-  comboTimerId = setTimeout(resetCombo, COMBO_TIMEOUT);
 }
 
 function resetCombo() {
   combo           = 0;
+  comboLeft       = 0;
   comboMultiplier = 1;
   comboDisplayEl.classList.add('hidden');
 }
@@ -528,7 +653,7 @@ function updateProgress() {
 }
 
 function updateMissedDisplay() {
-  const pct = MAX_MISSED > 0 ? (missed / MAX_MISSED) * 100 : 0;
+  const pct = (missed / MAX_MISSED) * 100;
   missedEl.style.width = pct + '%';
   missedEl.setAttribute('aria-valuenow', Math.round(pct));
   if (pct >= 70) {
@@ -543,52 +668,44 @@ function updateMissedDisplay() {
 // ============================================================
 // POWER-UP SYSTEM
 // ============================================================
-function startPowerUpSpawning() {
-  clearInterval(powerUpSpawnTimer);
-  powerUpSpawnTimer = setInterval(() => {
-    if (gameActive && !levelTransitioning) spawnPowerUp();
-  }, POWERUP_SPAWN_INTERVAL);
-}
+const POWERUP_LABELS = {
+  multishot: '⚡ Multi-Tiro',
+  slowmo:    '🐌 Câmara Lenta',
+  supershot: '💥 Super Tiro',
+};
 
 function spawnPowerUp() {
-  if (document.querySelector('.powerup-pickup')) return; // one at a time
-  const types  = ['multishot', 'slowmo', 'supershot'];
-  const labels = { multishot: '⚡ Multi-Tiro', slowmo: '🐌 Câmara Lenta', supershot: '💥 Super Tiro' };
-  const type   = types[Math.floor(Math.random() * types.length)];
+  if (pickup) return; // one at a time
+  const types = Object.keys(POWERUP_LABELS);
+  const type  = types[Math.floor(Math.random() * types.length)];
 
   const el = document.createElement('div');
   el.className  = 'powerup-pickup';
-  el.textContent = labels[type];
+  el.textContent = POWERUP_LABELS[type];
   el.dataset.type = type;
 
   const W = window.innerWidth;
-  el.style.left = (60 + Math.random() * (W - 220)) + 'px';
+  el.style.left = (60 + Math.random() * Math.max(0, W - 220)) + 'px';
   el.style.top  = (90 + Math.random() * (window.innerHeight * 0.45)) + 'px';
   document.body.appendChild(el);
 
-  el.addEventListener('click', () => collectPowerUp(type, el));
-  // Auto-remove after POWERUP_PICKUP_LIFETIME if the player doesn't collect it
-  setTimeout(() => { if (el.parentNode) el.remove(); }, POWERUP_PICKUP_LIFETIME);
+  pickup = { el, type, left: POWERUP_PICKUP_LIFETIME };
+  el.addEventListener('click', () => collectPowerUp(type));
 }
 
-function collectPowerUp(type, el) {
-  if (el.parentNode) el.remove();
-  activePowerUp = { type, endTime: performance.now() + POWERUP_DURATION };
-  const labels = { multishot: '⚡ Multi-Tiro ativo!', slowmo: '🐌 Câmara Lenta ativa!', supershot: '💥 Super Tiro ativo!' };
-  powerupIndEl.textContent = labels[type];
+function removePickup() {
+  if (pickup && pickup.el.parentNode) pickup.el.remove();
+  pickup = null;
+  document.querySelectorAll('.powerup-pickup').forEach(el => el.remove());
+}
+
+function collectPowerUp(type) {
+  if (!gameActive || paused) return;
+  removePickup();
+  activePowerUp = { type, left: POWERUP_DURATION };
+  powerupIndEl.textContent = POWERUP_LABELS[type] + ' ativo!';
   powerupIndEl.classList.remove('hidden');
-  clearTimeout(powerUpTimerId);
-  powerUpTimerId = setTimeout(() => {
-    activePowerUp = null;
-    powerupIndEl.classList.add('hidden');
-  }, POWERUP_DURATION);
-}
-
-// ============================================================
-// GAME OVER (too many escaped)
-// ============================================================
-function gameOverByMiss() {
-  endGame('miss');
+  vibrate(25);
 }
 
 // ============================================================
@@ -602,23 +719,19 @@ function checkLevelStuck() {
 }
 
 // ============================================================
-// NUGGET UTILITIES
+// Particles, bullets and nuggets
 // ============================================================
-function isTooClose(x, y, placed) {
-  return placed.some(p => Math.hypot(x - p.x, y - p.y) < NUGGET_MIN_DIST);
-}
-
 function clearNuggets() {
   nuggets.forEach(nd => nd.el.remove());
   nuggets = [];
 }
 
-// [CREEPY] Spawn a burst of coloured goo/spark particles at (cx, cy)
+// Spawn a burst of coloured goo/spark particles at (cx, cy)
 function createParticles(cx, cy) {
   const count  = 10;
   const colors = ['#39ff14', '#bf5fff', '#ffff55', '#ffffff', '#00ffcc'];
   for (let i = 0; i < count; i++) {
-    const angle      = (i / count) * Math.PI * 2 + Math.random() * 0.6;
+    const angle       = (i / count) * Math.PI * 2 + Math.random() * 0.6;
     const radialSpeed = 2.5 + Math.random() * 3.5;
     const size  = 4 + Math.random() * 7;
     const color = colors[Math.floor(Math.random() * colors.length)];
@@ -639,7 +752,7 @@ function createParticles(cx, cy) {
   }
 }
 
-// [CREEPY] Bigger explosion burst for rare gambusino death
+// Bigger explosion burst for rare gambusino death
 function createRareParticles(cx, cy) {
   const count  = 22;
   const colors = ['#ff003c', '#ff6600', '#ff0099', '#ffffff', '#ffaa00', '#ff4400'];
@@ -665,16 +778,16 @@ function createRareParticles(cx, cy) {
   }
 }
 
-// [CREEPY] Update particle positions and fade — called each rAF frame
-function updateParticles() {
+// f = elapsed time in 60 Hz frames (so behaviour is identical at 60/90/120 Hz)
+function updateParticles(f) {
   if (!particles.length) return;
   const surviving = [];
   for (const p of particles) {
-    p.life -= p.decay;
+    p.life -= p.decay * f;
     if (p.life <= 0) { p.el.remove(); continue; }
-    p.x  += p.vx;
-    p.y  += p.vy;
-    p.vy += PARTICLE_GRAVITY; // apply gravity to particles
+    p.x  += p.vx * f;
+    p.y  += p.vy * f;
+    p.vy += PARTICLE_GRAVITY * f;
     p.el.style.left      = p.x + 'px';
     p.el.style.top       = p.y + 'px';
     p.el.style.opacity   = p.life.toFixed(2);
@@ -684,7 +797,6 @@ function updateParticles() {
   particles = surviving;
 }
 
-// [CREEPY] Clear any in-flight particles (call on game end / restart)
 function clearParticles() {
   particles.forEach(p => p.el.remove());
   particles = [];
@@ -693,38 +805,34 @@ function clearParticles() {
 function clearBullets() {
   bullets.forEach(b => b.el.remove());
   bullets = [];
-  // [CREEPY] Remove any lingering trail elements
   document.querySelectorAll('.bullet-trail').forEach(el => el.remove());
 }
 
-function updateNuggets() {
+function updateNuggets(f) {
   if (!nuggets.length) return;
   const W = window.innerWidth;
   const H = window.innerHeight;
-  // Slow motion power-up: multiply velocity by 0.4 while active
-  const slowFactor = (activePowerUp && activePowerUp.type === 'slowmo'
-                      && performance.now() < activePowerUp.endTime) ? 0.4 : 1;
+  const k = f * (hasPowerUp('slowmo') ? 0.4 : 1); // slow motion scales movement only
   const surviving = [];
   let anyEscaped = false;
   for (const nd of nuggets) {
-    nd.x += nd.vx * slowFactor;
-    nd.y += nd.vy * slowFactor;
+    nd.x += nd.vx * k;
+    nd.y += nd.vy * k;
     // Bounce off side walls for zig-zag
-    if (nd.x < 0)              { nd.x = 0;           nd.vx =  Math.abs(nd.vx); }
-    else if (nd.x > W - nd.size) { nd.x = W - nd.size; nd.vx = -Math.abs(nd.vx); }
+    if (nd.x < 0)                { nd.x = 0;             nd.vx =  Math.abs(nd.vx); }
+    else if (nd.x > W - nd.size) { nd.x = W - nd.size;   nd.vx = -Math.abs(nd.vx); }
     nd.el.style.left = nd.x + 'px';
     nd.el.style.top  = nd.y + 'px';
     if (nd.y > H) {
-      // Gambusino escaped — count as failure (not during level transition)
+      // Gambusino escaped
       nd.el.remove();
       anyEscaped = true;
-      if (!levelTransitioning) {
-        missed++;
-        updateMissedDisplay();
-        if (missed >= MAX_MISSED) {
-          gameOverByMiss();
-          return;
-        }
+      missed++;
+      updateMissedDisplay();
+      vibrate(40);
+      if (missed >= MAX_MISSED) {
+        endGame('miss');
+        return;
       }
     } else {
       surviving.push(nd);
@@ -735,7 +843,7 @@ function updateNuggets() {
 }
 
 function fireBullet() {
-  if (!gameActive || !torchOn) return;
+  if (!gameActive || paused || !torchOn) return;
 
   const now = performance.now();
   if (now - lastShotTime < shootCooldown) {
@@ -758,14 +866,10 @@ function fireBullet() {
 
   const apexX = window.innerWidth  / 2;
   const apexY = window.innerHeight - BEAM_APEX_Y_OFFSET;
-  const isSuperShot = activePowerUp && activePowerUp.type === 'supershot'
-                      && now < activePowerUp.endTime;
+  const isSuperShot = hasPowerUp('supershot');
 
   // Multi-shot: 5 bullets at spread angles; otherwise single bullet
-  const spreads = (activePowerUp && activePowerUp.type === 'multishot'
-                   && now < activePowerUp.endTime)
-    ? [-20, -10, 0, 10, 20]
-    : [0];
+  const spreads = hasPowerUp('multishot') ? [-20, -10, 0, 10, 20] : [0];
 
   for (const spread of spreads) {
     const r  = (currentAngle + spread) * Math.PI / 180;
@@ -778,19 +882,20 @@ function fireBullet() {
       x: apexX, y: apexY,
       vx: BULLET_SPEED * Math.sin(r),
       vy: -BULLET_SPEED * Math.cos(r),
+      trailClock: 0,
       el, isSuperShot
     });
   }
 }
 
-function updateBullets() {
+function updateBullets(f, dt) {
   if (!bullets.length) return;
   const W = window.innerWidth;
   const H = window.innerHeight;
   const surviving = [];
   for (const b of bullets) {
-    b.x += b.vx;
-    b.y += b.vy;
+    b.x += b.vx * f;
+    b.y += b.vy * f;
     if (b.x < 0 || b.x > W || b.y < 0 || b.y > H) {
       b.el.remove();
       continue;
@@ -798,9 +903,10 @@ function updateBullets() {
     b.el.style.left = b.x + 'px';
     b.el.style.top  = b.y + 'px';
 
-    // [CREEPY] Emit a fading trail element every 2 frames
-    b.trailFrame = (b.trailFrame || 0) + 1;
-    if (b.trailFrame % 2 === 0) {
+    // Fading trail, emitted on a fixed time interval (not per frame)
+    b.trailClock += dt;
+    if (b.trailClock >= TRAIL_INTERVAL_MS) {
+      b.trailClock -= TRAIL_INTERVAL_MS;
       const trail = document.createElement('div');
       trail.className = 'bullet-trail';
       const ts = 5 + Math.random() * 4;
@@ -810,8 +916,7 @@ function updateBullets() {
     }
 
     let destroyBullet = false;
-    // Iterate backwards: hitNugget() may splice from the nuggets array via killNugget(),
-    // so reverse iteration avoids index skipping after removal
+    // Iterate backwards: hitNugget() may remove from `nuggets` via killNugget()
     for (let i = nuggets.length - 1; i >= 0; i--) {
       const nd = nuggets[i];
       if (Math.hypot(b.x - (nd.x + nd.half), b.y - (nd.y + nd.half)) < nd.half) {
@@ -832,67 +937,46 @@ function updateBullets() {
   bullets = surviving;
 }
 
-function showVictory() {
-  if (!gameActive) return;
-  gameActive = false;
-  torchOn    = false;
-  torchBtn.classList.remove('on');
-  beam.classList.remove('active');
-
-  sweepStartTime = null;
-  clearInterval(spawnTimer);
-  clearInterval(powerUpSpawnTimer);
-  clearTimeout(powerUpTimerId);
-  clearTimeout(comboTimerId);
-  clearNuggets();
-  clearBullets();
-  clearParticles();
-  clearInterval(timerHandle);
-  setDarkness();
-  document.querySelectorAll('.powerup-pickup').forEach(el => el.remove());
-  comboDisplayEl.classList.add('hidden');
-  powerupIndEl.classList.add('hidden');
-
-  bgMusic.pause();
-  bgMusic.currentTime = 0;
-
-  // [CREEPY] Level 30 victory — unsettling message
-  endTitle.innerHTML = 'Apanhaste todos os gambusinos… 👁️';
-  endTitle.classList.add('creepy-shake', 'creepy-glow');
-  endSub.textContent  = 'ou será que não?';
-  endDesc.innerHTML   =
-    `<strong>${score}</strong> pontos capturados… por enquanto.<br>` +
-    `<em style="font-size:0.85em;color:#888;display:block;margin-top:10px">` +
-    `Apanhaste todos os gambusinos... ou será que não? 👁️<br>A mina nunca esquece.</em>`;
-
-  endScreen.classList.remove('hidden');
-}
-
-// --- rAF animation loop ---
+// ============================================================
+// Main loop
+// ============================================================
 function rafLoop() {
   rafId = requestAnimationFrame(rafLoop);
 
-  if (!gameActive) return;
-
   const now = performance.now();
+  const dt  = Math.min(now - lastFrame, MAX_DT);
+  lastFrame = now;
+
+  if (!gameActive || paused) return;
+
+  const f = dt / FRAME_MS;
 
   if (hasGyro) {
     // Smooth interpolation toward gyroscope angle
-    currentAngle += (targetAngle - currentAngle) * LERP_FACTOR;
+    currentAngle += (targetAngle - currentAngle) * (1 - Math.pow(1 - LERP_FACTOR, f));
   } else {
     // Fallback: automatic horizontal sweep via sine wave
-    if (sweepStartTime === null) sweepStartTime = now;
-    const t = ((now - sweepStartTime) % BEAM_SWEEP_PERIOD) / BEAM_SWEEP_PERIOD;
+    sweepClock = (sweepClock + dt) % BEAM_SWEEP_PERIOD;
+    const t = sweepClock / BEAM_SWEEP_PERIOD;
     const sweepAngle = Math.sin(t * Math.PI * 2 - Math.PI / 2) * MAX_SWEEP_ANGLE;
-    currentAngle += (sweepAngle - currentAngle) * LERP_FACTOR;
+    currentAngle += (sweepAngle - currentAngle) * (1 - Math.pow(1 - LERP_FACTOR, f));
   }
 
-  updateBullets();
-  updateParticles(); // [CREEPY] update hit particles — runs even when torch is off
+  updateBullets(f, dt);
+  updateParticles(f);
 
+  if (levelTransitioning) {
+    transitionLeft -= dt;
+    if (transitionLeft <= 0) finishTransition();
+    return;
+  }
+
+  // With the torch off the cave is frozen: nothing spawns, moves or expires.
   if (!torchOn) return;
 
-  updateNuggets();
+  tickClocks(dt);
+  updateNuggets(f);
+  if (!gameActive) return; // updateNuggets may have ended the game
   updateBeamVisual();
   checkLight();
 }
@@ -903,7 +987,7 @@ function setDarkness() {
 }
 
 function updateBeamVisual() {
-  // [CREEPY] Subtle random tremor adds tension to the torch beam
+  // Subtle random tremor adds tension to the torch beam
   const tremor = (Math.random() - 0.5) * 0.5;
   beam.style.transform = `rotate(${currentAngle + tremor}deg)`;
 }
@@ -915,7 +999,7 @@ function checkLight() {
   const beamH     = window.innerHeight - BEAM_APEX_Y_OFFSET;
   const halfAngle = Math.atan2(halfW, beamH) * (180 / Math.PI);
 
-  // [CREEPY] Current time used for per-nugget jelly bounce
+  // Current time used for per-nugget jelly bounce
   const now = performance.now();
 
   nuggets.forEach(nd => {
@@ -925,7 +1009,7 @@ function checkLight() {
     const dx = nx - apexX;
     const dy = ny - apexY;
 
-    // [CREEPY] Jelly squash-stretch: Y stretches while X squashes
+    // Jelly squash-stretch: Y stretches while X squashes
     const bounceT = now / BOUNCE_PERIOD_MS + nd.bouncePhase;
     const bounceY = 1 + BOUNCE_Y_AMPLITUDE * Math.sin(bounceT);
     const bounceX = 1 - BOUNCE_X_AMPLITUDE * Math.sin(bounceT);
@@ -934,7 +1018,6 @@ function checkLight() {
     if (dy >= 0) {
       nd.el.style.opacity       = '0';
       nd.el.style.pointerEvents = 'none';
-      // [CREEPY] Keep animating bounce even in darkness for smooth beam entry
       nd.el.style.transform     = `scale(${(0.7 * bounceX).toFixed(3)}, ${(0.7 * bounceY).toFixed(3)})`;
       nd.el.style.filter        = '';
       return;
@@ -947,8 +1030,7 @@ function checkLight() {
     const baseScale   = 0.7 + 0.3 * intensity;
 
     nd.el.style.opacity       = intensity;
-    nd.el.style.pointerEvents = intensity > 0 ? 'auto' : 'none';
-    // [CREEPY] Bounce baked into the beam-driven scale
+    nd.el.style.pointerEvents = (TAP_TO_KILL && intensity > 0) ? 'auto' : 'none';
     nd.el.style.transform     = `scale(${(baseScale * bounceX).toFixed(3)}, ${(baseScale * bounceY).toFixed(3)})`;
 
     if (intensity > 0) {
@@ -956,7 +1038,6 @@ function checkLight() {
       const glow1      = Math.round(28 * intensity);
       const glow2      = Math.round(10 * intensity);
       const alpha      = intensity.toFixed(2);
-      // [CREEPY] Hint of eerie green in the glow when lit; red tint for rare
       if (nd.isRare) {
         nd.el.style.filter = `brightness(${brightness}) drop-shadow(0 0 ${glow1}px rgba(255,50,0,${alpha})) drop-shadow(0 0 ${glow2}px rgba(255,100,200,${alpha}))`;
       } else {
@@ -968,7 +1049,9 @@ function checkLight() {
   });
 }
 
-// --- Gyroscope ---
+// ============================================================
+// Gyroscope
+// ============================================================
 function onDeviceOrientation(e) {
   if (e.gamma === null) return;
   hasGyro = true;
@@ -995,7 +1078,9 @@ if (typeof DeviceOrientationEvent !== 'undefined' &&
   window.addEventListener('deviceorientation', onDeviceOrientation, { passive: true });
 }
 
-// --- Stars ---
+// ============================================================
+// Ambience: stars and fog
+// ============================================================
 function initStars(containerId, count) {
   const container = document.getElementById(containerId);
   if (!container) return;
@@ -1020,10 +1105,9 @@ initStars('stars',  60);
 initStars('stars2', 80);
 initStars('stars3', 60);
 
-// [CREEPY] Atmospheric fog wisps drifting across the cave
+// Atmospheric fog wisps drifting across the cave
 function initFog() {
   const cave = document.getElementById('cave');
-  // Remove any fog from a previous game start
   cave.querySelectorAll('.fog').forEach(el => el.remove());
 
   const configs = [
@@ -1046,5 +1130,6 @@ function initFog() {
 
 initFog();
 
-// Initialise darkness to full black before game starts
+// Initialise darkness to full black and show the stored record before the game starts
 setDarkness();
+updateRecordTexts();

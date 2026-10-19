@@ -80,6 +80,14 @@
   <div id="escape-bar" role="progressbar" aria-label="Gambusinos fugitivos" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
 </div>
 
+<!-- PAUSE BUTTON -->
+<button id="pause-btn" aria-label="Pausa">
+  <svg viewBox="0 0 24 24" fill="currentColor" style="color:#B8860B">
+    <rect x="6" y="5" width="4" height="14" rx="1"/>
+    <rect x="14" y="5" width="4" height="14" rx="1"/>
+  </svg>
+</button>
+
 <!-- TORCH BUTTON -->
 <button id="torch-btn" aria-label="Ligar lanterna">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color:#B8860B">
@@ -116,7 +124,18 @@
       Usa o botão de disparo para os abater com a luz da lanterna.<br>
       30 níveis de dificuldade crescente aguardam-te.
     </p>
+    <p class="screen-record" id="record-start"></p>
     <button class="btn-primary" id="start-btn">ENTRAR NA MINA</button>
+  </div>
+</div>
+
+<!-- PAUSE SCREEN -->
+<div class="screen hidden" id="pause-screen">
+  <div style="position:relative;z-index:1;width:100%">
+    <div class="screen-title">Pausa</div>
+    <div class="divider"></div>
+    <button class="btn-primary" id="resume-btn">CONTINUAR</button>
+    <button class="btn-secondary" id="quit-btn">SAIR PARA O MENU</button>
   </div>
 </div>
 
@@ -127,6 +146,7 @@
     <div class="screen-sub" id="end-sub">O tempo esgotou-se</div>
     <div class="divider"></div>
     <p class="screen-desc" id="end-desc"></p>
+    <p class="screen-record" id="record-end"></p>
     <button class="btn-primary" id="restart-btn">VOLTAR À MINA</button>
   </div>
 </div>
@@ -136,7 +156,7 @@
 <script src="script.js"></script>
 <script>
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./sw.js");
+    navigator.serviceWorker.register("./sw.js").catch(() => {});
   }
 </script>
 </body>
